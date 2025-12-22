@@ -5,6 +5,9 @@ import warnings
 import logging
 from typing import Optional, Tuple
 
+# Import base ATR calculation for internal use
+from .utils import calculate_atr as _base_calculate_atr
+
 
 class RiskManager:
     """
@@ -136,6 +139,11 @@ class RiskManager:
         Returns:
             ATR series with validation warnings
         """
+        # Debug ATR calculation
+        print(f"ATR input data shape: {data.shape}")
+        print(f"Data columns: {data.columns.tolist()}")
+        print(f"First few rows:\n{data.head()}")
+        
         if data is None or data.empty:
             self.logger.warning("Empty or None data provided for ATR calculation")
             return pd.Series(dtype=float)
@@ -149,21 +157,16 @@ class RiskManager:
             self.logger.error(f"Missing required columns for ATR: {missing_cols}")
             return pd.Series(dtype=float)
 
-        high = data['High']
-        low = data['Low']
-        close = data['Close']
-
-        tr1 = high - low
-        tr2 = (high - close.shift()).abs()
-        tr3 = (low - close.shift()).abs()
-
-        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        atr = tr.rolling(window=period_to_use).mean()
+        # Use base utility function for ATR calculation
+        atr = _base_calculate_atr(data, period=period_to_use)
         
-        # Validate ATR values
+        # Validate ATR values (only warn if there are unexpected NaN values after the warmup period)
         invalid_atr_count = atr.isna().sum()
-        if invalid_atr_count > 0:
-            self.logger.warning(f"ATR calculation produced {invalid_atr_count} invalid values")
+        expected_nan_count = min(period_to_use - 1, len(atr))  # First (period-1) values should be NaN
+        unexpected_nan_count = invalid_atr_count - expected_nan_count
+        
+        if unexpected_nan_count > 0:
+            self.logger.warning(f"ATR calculation produced {unexpected_nan_count} unexpected invalid values")
         
         return atr
 

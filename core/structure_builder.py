@@ -1,43 +1,23 @@
 import pandas as pd
-import numpy as np
-from scipy.signal import find_peaks
 from typing import List, Dict, Tuple, Optional
 
-# Assumes this function is also updated or exists elsewhere.
-def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    """Calculates Average True Range (ATR) using capitalized column names."""
-    # FIX: Changed column names to capitalized versions
-    high_low = df['High'] - df['Low']
-    high_close = np.abs(df['High'] - df['Close'].shift())
-    low_close = np.abs(df['Low'] - df['Close'].shift())
-    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-    return tr.rolling(window=period).mean()
+# Import consolidated utility functions
+from .utils import detect_swing_points_dataframe
 
+# Backward compatibility alias
 def detect_swing_points_scipy(df: pd.DataFrame, prominence_factor: float = 7.5) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Detects swing points using scipy, now with capitalized column names.
+    Detects swing points using scipy (now uses consolidated utility function).
+    
+    This function is kept for backward compatibility.
+    New code should use detect_swing_points_dataframe() from utils module.
     """
-    atr = calculate_atr(df)
-    required_prominence = atr.mean() * prominence_factor if pd.notna(atr.mean()) and atr.mean() > 0 else (df['High'].max() - df['Low'].min()) * 0.01
-    
-    # FIX: Changed column names to capitalized versions
-    lows_inv = -df['Low']
-    high_indices, _ = find_peaks(df['High'], prominence=required_prominence)
-    low_indices, _ = find_peaks(lows_inv, prominence=required_prominence)
-
-    swing_highs = df.iloc[high_indices][['High']].copy()
-    swing_highs.rename(columns={'High': 'price'}, inplace=True) # FIX: Renaming from 'High'
-    swing_highs['type'] = 'high'
-
-    swing_lows = df.iloc[low_indices][['Low']].copy()
-    swing_lows.rename(columns={'Low': 'price'}, inplace=True) # FIX: Renaming from 'Low'
-    swing_lows['type'] = 'low'
-    
-    return swing_highs, swing_lows
+    return detect_swing_points_dataframe(df, prominence_factor)
 
 def build_market_structure(df: pd.DataFrame, prominence_factor: float = 7.5) -> List[Dict]:
     """
-    Builds and classifies the market structure (HH, LH, HL, LL) chronologically.
+    FIXED: Builds and classifies the market structure (HH, LH, HL, LL) chronologically.
+    Now properly adds ALL structure points, including the first ones.
     """
     swing_highs, swing_lows = detect_swing_points_scipy(df, prominence_factor)
     all_swings = pd.concat([swing_highs, swing_lows]).sort_index()
@@ -54,21 +34,35 @@ def build_market_structure(df: pd.DataFrame, prominence_factor: float = 7.5) -> 
         point_type = row['type']
         
         classification = None
+        
         if point_type == 'high':
             if last_high:
+                # Compare with previous high
                 classification = "HH" if price > last_high['price'] else "LH"
+            else:
+                # FIXED: First high gets a default classification
+                classification = "HH"  # Assume first high is HH
+            
+            # Update last_high
             last_high = {'timestamp': timestamp, 'price': price}
-        else: # point_type == 'low'
+            
+        else:  # point_type == 'low'
             if last_low:
+                # Compare with previous low
                 classification = "HL" if price > last_low['price'] else "LL"
+            else:
+                # FIXED: First low gets a default classification
+                classification = "LL"  # Assume first low is LL
+            
+            # Update last_low
             last_low = {'timestamp': timestamp, 'price': price}
         
-        if classification:
-            structure.append({
-                "timestamp": timestamp,
-                "type": classification,
-                "price": price
-            })
+        # FIXED: Always add to structure (no more filtering out first points)
+        structure.append({
+            "timestamp": timestamp,
+            "type": classification,
+            "price": price
+        })
             
     return structure
 

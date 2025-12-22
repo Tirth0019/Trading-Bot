@@ -7,7 +7,7 @@ Easily adjust parameters without modifying the main code
 # Trading Parameters
 TRADING_CONFIG = {
     "initial_capital": 10000,        # Starting capital in USD
-    "risk_per_trade": 0.02,         # 2% risk per trade (0.02 = 2%)
+    "risk_per_trade": 0.005,        # 0.5% risk per trade (0.005 = 0.5%)
     "reward_risk_ratio": 2.0,       # 2:1 reward to risk ratio
     "max_trade_duration": 48,       # Maximum trade duration in hours
     "confidence_threshold": 0.7,    # Minimum confidence for A+ entries (0.0-1.0)
@@ -129,7 +129,7 @@ STRATEGY_PRESETS = {
         "max_open_trades": 5,        # More simultaneous trades
     },
     "balanced": {
-        "risk_per_trade": 0.02,      # 2% risk per trade
+        "risk_per_trade": 0.005,     # 0.5% risk per trade
         "reward_risk_ratio": 2.0,    # 2:1 reward to risk
         "confidence_threshold": 0.7,  # Medium confidence requirement
         "max_open_trades": 3,        # Medium number of trades

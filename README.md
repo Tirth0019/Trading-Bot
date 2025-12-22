@@ -182,9 +182,26 @@ seaborn>=0.11.0        # Statistical visualization
 
 ## 🎯 Quick Start Guide
 
-### 1. Basic Backtest Run
+### 🚀 **CENTRALIZED SYSTEM** (Recommended)
+
+The trading bot now has a **single entry point** for all functionality:
+
 ```bash
-python "Configuration_Main_System\backtester.py"
+# Run backtest
+python trading_bot.py --backtest --symbol XAUUSD
+
+# Analyze market
+python trading_bot.py --analyze --symbol EURUSD
+
+# See all options
+python trading_bot.py --help
+```
+
+**See `QUICK_START.md` for detailed usage guide.**
+
+### 1. Basic Backtest Run (Legacy)
+```bash
+python core/backtester.py
 ```
 
 This will:

@@ -1,65 +1,13 @@
 import pandas as pd
-import numpy as np
-from scipy.signal import find_peaks
 from typing import Tuple, List, Dict
+
+# Import consolidated utility functions
+from .utils import calculate_atr, detect_swing_points
 
 pd.options.mode.chained_assignment = None  # Disable pandas warning noise
 
-def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    """
-    Calculates the Average True Range (ATR). This function is already efficient.
-    """
-    # Handle both lowercase and capitalized column names
-    high_col = 'High' if 'High' in df.columns else 'high'
-    low_col = 'Low' if 'Low' in df.columns else 'low'
-    close_col = 'Close' if 'Close' in df.columns else 'close'
-    
-    high = df[high_col]
-    low = df[low_col]
-    close = df[close_col]
-    prev_close = close.shift(1)
-    
-    tr = pd.concat([
-        high - low,
-        (high - prev_close).abs(),
-        (low - prev_close).abs()
-    ], axis=1).max(axis=1)
-
-    return tr.rolling(window=period).mean()
-
-
-def detect_swing_points(df: pd.DataFrame, window: int = 3) -> Tuple[List[Tuple[pd.Timestamp, float]], List[Tuple[pd.Timestamp, float]]]:
-    """
-    Detects swing highs and lows using the highly efficient `scipy.signal.find_peaks`.
-    This is significantly faster and more accurate than the original loop-based method.
-    
-    Args:
-        df: DataFrame with OHLC data.
-        window: The number of bars on each side of a swing point that must be lower/higher.
-                Corresponds to the `distance` parameter in find_peaks.
-    
-    Returns:
-        A tuple of lists containing (timestamp, price) for swing highs and swing lows.
-    """
-    atr = calculate_atr(df).mean()
-    
-    # Use ATR to set a dynamic prominence, filtering out insignificant noise.
-    # A peak must stand out by at least 20% of the average ATR to be considered.
-    high_col = 'High' if 'High' in df.columns else 'high'
-    low_col = 'Low' if 'Low' in df.columns else 'low'
-    
-    required_prominence = atr * 0.20 if atr > 0 else (df[high_col].max() - df[low_col].min()) * 0.01
-
-    # Find indices of peaks (highs) and troughs (lows)
-    # The 'distance' parameter ensures swings are at least `window` bars apart.
-    high_indices, _ = find_peaks(df[high_col], prominence=required_prominence, distance=window)
-    low_indices, _ = find_peaks(-df[low_col], prominence=required_prominence, distance=window)
-
-    # Format output to match the required List[Tuple[timestamp, price]] structure
-    swing_highs = [(df.index[i], df[high_col].iloc[i]) for i in high_indices]
-    swing_lows = [(df.index[i], df[low_col].iloc[i]) for i in low_indices]
-    
-    return swing_highs, swing_lows
+# Re-export for backward compatibility
+__all__ = ['calculate_atr', 'detect_swing_points', 'detect_trend']
 
 
 def detect_trend(swing_highs: list[tuple[pd.Timestamp, float]], swing_lows: list[tuple[pd.Timestamp, float]]) -> str:

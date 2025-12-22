@@ -75,7 +75,7 @@ class MultiTimeframeTradingExecutor:
         self.atr_multiplier = atr_multiplier
         
         # Initialize analyzers
-        self.market_analyzer = MarketStructureAnalyzer(confidence_threshold=confidence_threshold)
+        self.market_analyzer = MarketStructureAnalyzer(config={"confidence_thresholds": {"BOS": confidence_threshold, "CHOCH": confidence_threshold}})
         self.risk_manager = RiskManager(risk_per_trade=risk_per_trade,
                                         atr_period=atr_period,
                                         atr_multiplier=atr_multiplier)
@@ -86,28 +86,98 @@ class MultiTimeframeTradingExecutor:
         self.open_trades: List[TradeExecution] = []
         self._resampled_data: Optional[Dict[str, pd.DataFrame]] = None
         
-    def analyze_1h_trend(self, data_1h: pd.DataFrame) -> str:
-        """
-        Analyze trend in 1H timeframe using swing point analysis
+        # Caching for performance optimization
+        self._trend_cache: Dict[str, str] = {}  # Cache for 1H trends
+        self._structure_cache: Dict[str, List] = {}  # Cache for market structures
+        self._atr_cache: Dict[str, pd.Series] = {}  # Cache for ATR calculations
         
-        Args:
-            data_1h: 1H timeframe OHLCV data
-            
-        Returns:
-            Trend direction: "uptrend", "downtrend", or "sideways"
+    def _select_trend_with_windows(self, df: pd.DataFrame, windows: List[int], swing_window: int) -> str:
+        """
+        Evaluate multiple lookback windows and pick the trend with the better score
+        (slope / volatility). Also apply a recent-swing override to avoid excessive
+        'sideways' classifications in choppy data.
+        """
+        if df.empty:
+            return "sideways"
+
+        best_trend = "sideways"
+        best_score = -float("inf")
+
+        for w in windows:
+            if len(df) < w:
+                continue
+            tail = df.tail(w)
+            swing_highs, swing_lows = detect_swing_points(tail, window=swing_window)
+            trend = detect_trend(swing_highs, swing_lows)
+
+            # Compute simple slope/vol score; penalize sideways less aggressively
+            closes = tail["Close"]
+            slope = (closes.iloc[-1] - closes.iloc[0]) / max(1, w)
+            vol = closes.pct_change().std() or 1e-8
+            score = slope / vol
+            if trend == "sideways":
+                score *= 0.5  # softer penalty to allow mild trends through
+
+            if score > best_score:
+                best_score = score
+                best_trend = trend
+
+        # Recent-swing override: look at the last 6 swings to infer direction
+        look_swings = min(60, len(df))
+        tail_swings = df.tail(look_swings)
+        sh, sl = detect_swing_points(tail_swings, window=swing_window)
+        swing_df = []
+        for ts, p in sh:
+            swing_df.append((ts, p, "high"))
+        for ts, p in sl:
+            swing_df.append((ts, p, "low"))
+        swing_df = sorted(swing_df, key=lambda x: x[0])
+        if len(swing_df) >= 4:
+            # classify last swings
+            ups = downs = 0
+            for i in range(1, len(swing_df)):
+                cur = swing_df[i]
+                prev = swing_df[i-1]
+                if cur[2] == prev[2]:
+                    if cur[1] > prev[1]:
+                        ups += 1
+                    elif cur[1] < prev[1]:
+                        downs += 1
+            if ups >= downs + 2:
+                best_trend = "uptrend"
+            elif downs >= ups + 2:
+                best_trend = "downtrend"
+
+        return best_trend
+
+    def analyze_1h_trend(self, data_1h: pd.DataFrame, use_cache: bool = True) -> str:
+        """
+        Analyze 1H trend using dual windows:
+          - 12-hour window (12 bars)
+          - 24-hour window (24 bars)
+        Picks the one with better slope/vol score (cleaner trend).
         """
         if data_1h.empty or len(data_1h) < 20:
             return "sideways"
-        
-        # Use last 50 candles for trend analysis
-        recent_data = data_1h.tail(50)
-        
-        # Detect swing points
-        swing_highs, swing_lows = detect_swing_points(recent_data, window=3)
-        
-        # Determine trend
-        trend = detect_trend(swing_highs, swing_lows)
-        
+
+        if use_cache:
+            cache_key = f"{data_1h.index[-1]}_{len(data_1h)}"
+            if cache_key in self._trend_cache:
+                return self._trend_cache[cache_key]
+
+        trend = self._select_trend_with_windows(
+            data_1h,
+            windows=[12, 24],   # 12h (faster), 24h (cleaner)
+            swing_window=3
+        )
+
+        if use_cache:
+            cache_key = f"{data_1h.index[-1]}_{len(data_1h)}"
+            self._trend_cache[cache_key] = trend
+            if len(self._trend_cache) > 1000:
+                oldest_key = next(iter(self._trend_cache))
+                del self._trend_cache[oldest_key]
+
         return trend
     
     def find_a_plus_entries_15m(self, data_15m: pd.DataFrame, trend_1h: str) -> List[MarketEvent]:
@@ -159,6 +229,14 @@ class MultiTimeframeTradingExecutor:
             True if retracement confirmation is valid, False otherwise
         """
         if len(data_15m_current) < 15:
+            return False
+        
+        # Ensure 15M data covers the event and extends past it
+        if data_15m_current.index.min() > event.timestamp:
+            return False
+        if data_15m_current.index.max() <= event.timestamp:
+            return False
+        if current_time <= event.timestamp:
             return False
         
         # Get ATR for tolerance calculation using RiskManager
@@ -232,6 +310,12 @@ class MultiTimeframeTradingExecutor:
         if data_1m.empty or len(data_1m) < 20:
             return False
         
+        # Ensure 1M data spans the event time and at least one candle after
+        if data_1m.index.min() > entry_time:
+            return False
+        if data_1m.index.max() <= entry_time:
+            return False
+        
         # FIXED: Get the first 1M candle that occurred *after* the entry signal time
         future_candles = data_1m[data_1m.index > entry_time]
         if future_candles.empty:
@@ -269,31 +353,78 @@ class MultiTimeframeTradingExecutor:
     
     def _is_trend_aligned_enhanced(self, event: MarketEvent, trend_1h: str, data_15m: pd.DataFrame) -> bool:
         """
-        Enhanced trend alignment check: 1H + 15M trends must match
-        
-        Args:
-            event: Market event
-            trend_1h: 1H timeframe trend
-            data_15m: 15M timeframe data
-            
-        Returns:
-            True if both timeframes align with event direction
+        Enhanced trend alignment check: 1H + 15M trends must match.
+        Relaxed rules for sideways markets and CHOCH (reversal) events,
+        while keeping BOS (continuation) stricter but still allowing
+        slightly relaxed alignment.
         """
-        # Analyze 15M trend using swing points
+        # Analyze 15M trend using dual windows (12h = 48 bars, 24h = 96 bars)
         if len(data_15m) < 20:
             return False
-        
-        # Get recent 15M swing points
-        recent_15m = data_15m.tail(20)
-        swing_highs, swing_lows = detect_swing_points(recent_15m, window=2)
-        trend_15m = detect_trend(swing_highs, swing_lows)
-        
-        # Check if both timeframes align with event direction
-        if event.direction in ["BUY", "Bullish"]:
-            return (trend_1h == "uptrend" and trend_15m == "uptrend")
-        elif event.direction in ["SELL", "Bearish"]:
-            return (trend_1h == "downtrend" and trend_15m == "downtrend")
-        
+
+        trend_15m = self._select_trend_with_windows(
+            data_15m,
+            windows=[48, 96],  # 12h and 24h of 15M bars
+            swing_window=2
+        )
+
+        is_bull = event.direction in ["BUY", "Bullish"]
+        is_bear = event.direction in ["SELL", "Bearish"]
+        is_choch = event.event_type == EventType.CHOCH
+        is_bos = event.event_type == EventType.BOS
+
+        # Helper: allow if both clearly align
+        def aligned(up: bool) -> bool:
+            if up:
+                return trend_1h == "uptrend" and trend_15m == "uptrend"
+            else:
+                return trend_1h == "downtrend" and trend_15m == "downtrend"
+
+        # Helper: relaxed alignment when one tf is sideways
+        def relaxed(up: bool) -> bool:
+            if up:
+                return (trend_1h == "sideways" and trend_15m == "uptrend") or \
+                       (trend_1h == "uptrend" and trend_15m == "sideways")
+            else:
+                return (trend_1h == "sideways" and trend_15m == "downtrend") or \
+                       (trend_1h == "downtrend" and trend_15m == "sideways")
+
+        # Helper: sideways-sideways allowance for strong events
+        def sideways_high_confidence() -> bool:
+            return trend_1h == "sideways" and trend_15m == "sideways" and event.confidence >= 0.6
+
+        # CHOCH (reversal) – be more permissive (trend change signal)
+        if is_choch:
+            if is_bull:
+                if aligned(True) or relaxed(True) or sideways_high_confidence():
+                    # Only block if clear opposite trend
+                    return trend_1h != "downtrend" and trend_15m != "downtrend"
+            if is_bear:
+                if aligned(False) or relaxed(False) or sideways_high_confidence():
+                    return trend_1h != "uptrend" and trend_15m != "uptrend"
+            return False
+
+        # BOS (continuation) – keep stricter, but allow relaxed if confidence high
+        if is_bos:
+            if is_bull:
+                if aligned(True):
+                    return True
+                if relaxed(True) and event.confidence >= 0.6:
+                    return True
+                return False
+            if is_bear:
+                if aligned(False):
+                    return True
+                if relaxed(False) and event.confidence >= 0.6:
+                    return True
+                return False
+
+        # Fallback for any other event types (treat like BOS strict)
+        if is_bull:
+            return aligned(True) or (relaxed(True) and event.confidence >= 0.7)
+        if is_bear:
+            return aligned(False) or (relaxed(False) and event.confidence >= 0.7)
+
         return False
     
 
@@ -617,33 +748,39 @@ class MultiTimeframeTradingExecutor:
         # Get the first 1M candle that occurred after the entry signal time
         confirmation_candle = future_candles.iloc[0]
         
-        # Apply the same filters as confirm_1m_signal_point_in_time
-        # Body size filter
-        body_size = abs(confirmation_candle['Close'] - confirmation_candle['Open'])
+        # Apply the same improved filters as confirm_1m_signal_point_in_time
+        # Calculate candle metrics
         candle_range = confirmation_candle['High'] - confirmation_candle['Low']
+        body_size = abs(confirmation_candle['Close'] - confirmation_candle['Open'])
         body_ratio = body_size / candle_range if candle_range > 0 else 0
         
-        if body_ratio < 0.3:  # Body must be at least 30% of candle range
-            return None
+        # Volume filter (optional - only if volume data is reliable)
+        volume_confirmation = True
+        if 'Volume' in data_1m_current.columns and data_1m_current['Volume'].sum() > 0:
+            recent_volume = data_1m_current['Volume'].tail(20).mean()
+            volume_ratio = confirmation_candle['Volume'] / recent_volume if recent_volume > 0 else 1
+            volume_confirmation = volume_ratio >= 1.1  # Reduced from 1.2 to 1.1
         
-        # Volume filter (if available)
-        if 'Volume' in confirmation_candle.index:
-            # Simple volume check - would need historical volume for proper ratio
-            if confirmation_candle['Volume'] <= 0:
-                return None
+        # Direction confirmation
+        is_green = confirmation_candle['Close'] > confirmation_candle['Open']
+        is_red = confirmation_candle['Close'] < confirmation_candle['Open']
         
-        # Momentum filter
+        # IMPROVED: Use OR logic for better signal capture (same as confirm_1m_signal_point_in_time)
         if signal_direction == "BUY":
-            # For BUY: Green candle with small upper wick
-            is_green = confirmation_candle['Close'] > confirmation_candle['Open']
-            small_upper_wick = (confirmation_candle['High'] - confirmation_candle['Close']) <= body_size * 0.2
-            if not (is_green and small_upper_wick):
+            # At least one of these must be true:
+            strong_body = body_ratio >= 0.25  # Reduced from 0.3
+            good_volume = volume_confirmation
+            strong_momentum = is_green and (confirmation_candle['High'] - confirmation_candle['Close']) <= body_size * 0.3
+            
+            if not (is_green and (strong_body or (good_volume and strong_momentum))):
                 return None
         elif signal_direction == "SELL":
-            # For SELL: Red candle with small lower wick
-            is_red = confirmation_candle['Close'] < confirmation_candle['Open']
-            small_lower_wick = (confirmation_candle['Close'] - confirmation_candle['Low']) <= body_size * 0.2
-            if not (is_red and small_lower_wick):
+            # At least one of these must be true:
+            strong_body = body_ratio >= 0.25  # Reduced from 0.3
+            good_volume = volume_confirmation
+            strong_momentum = is_red and (confirmation_candle['Close'] - confirmation_candle['Low']) <= body_size * 0.3
+            
+            if not (is_red and (strong_body or (good_volume and strong_momentum))):
                 return None
         
         return confirmation_candle
@@ -654,7 +791,7 @@ class MultiTimeframeTradingExecutor:
                                        entry_time: pd.Timestamp,
                                        current_time: pd.Timestamp) -> bool:
         """
-        FIXED: Confirm 1M signal with point-in-time data only (NO LOOK-AHEAD BIAS)
+        IMPROVED: More flexible 1M signal confirmation with configurable thresholds
         
         Args:
             data_1m_current: 1M data up to current time only
@@ -668,7 +805,7 @@ class MultiTimeframeTradingExecutor:
         if data_1m_current.empty or len(data_1m_current) < 20:
             return False
         
-        # FIXED: Get the first 1M candle after entry time but before current time
+        # Get the first 1M candle after entry time but before current time
         future_candles = data_1m_current[
             (data_1m_current.index > entry_time) & 
             (data_1m_current.index <= current_time)
@@ -676,33 +813,40 @@ class MultiTimeframeTradingExecutor:
         if future_candles.empty:
             return False
         
-        next_candle = future_candles.iloc[0]  # Use iloc[0] for robustness
+        next_candle = future_candles.iloc[0]
         
-        # Calculate candle body size (minimum 30% of total range)
+        # Calculate candle metrics
         candle_range = next_candle['High'] - next_candle['Low']
         body_size = abs(next_candle['Close'] - next_candle['Open'])
         body_ratio = body_size / candle_range if candle_range > 0 else 0
         
-        # Volume filter (20% above average volume)
-        recent_volume = data_1m_current['Volume'].tail(20).mean()
-        volume_ratio = next_candle['Volume'] / recent_volume if recent_volume > 0 else 1
+        # Volume filter (optional - only if volume data is reliable)
+        volume_confirmation = True
+        if 'Volume' in data_1m_current.columns and data_1m_current['Volume'].sum() > 0:
+            recent_volume = data_1m_current['Volume'].tail(20).mean()
+            volume_ratio = next_candle['Volume'] / recent_volume if recent_volume > 0 else 1
+            volume_confirmation = volume_ratio >= 1.1  # Reduced from 1.2 to 1.1
         
-        # Determine candle direction
+        # Direction confirmation
         is_green = next_candle['Close'] > next_candle['Open']
         is_red = next_candle['Close'] < next_candle['Open']
         
-        # FIXED: Enhanced confirmation criteria with corrected momentum filters
+        # IMPROVED: Use OR logic for better signal capture
         if signal_direction == "BUY":
-            return (is_green and 
-                   body_ratio >= 0.3 and  # Body size filter
-                   volume_ratio >= 1.2 and  # Volume filter
-                   (next_candle['High'] - next_candle['Close']) <= body_size * 0.2)  # Small upper wick (strong close)
+            # At least one of these must be true:
+            strong_body = body_ratio >= 0.25  # Reduced from 0.3
+            good_volume = volume_confirmation
+            strong_momentum = is_green and (next_candle['High'] - next_candle['Close']) <= body_size * 0.3
+            
+            return is_green and (strong_body or (good_volume and strong_momentum))
         
         elif signal_direction == "SELL":
-            return (is_red and 
-                   body_ratio >= 0.3 and  # Body size filter
-                   volume_ratio >= 1.2 and  # Volume filter
-                   (next_candle['Close'] - next_candle['Low']) <= body_size * 0.2)  # Small lower wick (strong close)
+            # At least one of these must be true:
+            strong_body = body_ratio >= 0.25  # Reduced from 0.3
+            good_volume = volume_confirmation
+            strong_momentum = is_red and (next_candle['Close'] - next_candle['Low']) <= body_size * 0.3
+            
+            return is_red and (strong_body or (good_volume and strong_momentum))
         
         return False
     
@@ -849,8 +993,13 @@ class MultiTimeframeTradingExecutor:
         print(f"🔄 Backtesting from {start_time} to {end_time}")
         print("📊 Processing 15M candles (entry timeframe) candle-by-candle...")
         
+        # OPTIMIZATION: Pre-compute 1H trend for each timestamp to avoid repeated calculations
+        # We'll update trend only when we have enough new data
+        last_trend_update_idx = 0
+        trend_1h = "sideways"
+        
         # PROPER BACKTESTING: Iterate through 15M candles (entry timeframe)
-        for current_timestamp, current_candle in data_15m.loc[start_time:end_time].iterrows():
+        for idx, (current_timestamp, current_candle) in enumerate(data_15m.loc[start_time:end_time].iterrows()):
             
             # Get historical data available UP TO the current timestamp (NO FUTURE DATA)
             hist_1h = data_1h.loc[data_1h.index < current_timestamp]
@@ -861,12 +1010,15 @@ class MultiTimeframeTradingExecutor:
             if len(hist_1h) < 20 or len(hist_15m) < 20 or len(hist_1m) < 20:
                 continue
             
-            # STEP 1: Check 1H trend on historical data only
-            trend_1h = self.analyze_1h_trend(hist_1h)
+            # OPTIMIZATION: Update 1H trend only every 4 candles (1 hour) instead of every candle
+            # This reduces redundant calculations while maintaining accuracy
+            if idx - last_trend_update_idx >= 4 or idx == 0:
+                trend_1h = self.analyze_1h_trend(hist_1h, use_cache=True)
+                last_trend_update_idx = idx
             
             # STEP 2: Check for A+ entries on 15M (include current candle)
             # We check for events on the most recent 15M candle (current_candle)
-            current_15m_data = hist_15m.append(current_candle.to_frame().T)
+            current_15m_data = pd.concat([hist_15m, current_candle.to_frame().T])
             a_plus_events = self.find_a_plus_entries_15m(current_15m_data, trend_1h)
             
             # Process events that occurred on the current timestamp
@@ -935,31 +1087,13 @@ class MultiTimeframeTradingExecutor:
         return results
     
     def _build_market_structure(self, data: pd.DataFrame) -> List:
-        """Build market structure from price data"""
-        # This is a simplified implementation
-        # In practice, you'd use the full market structure builder
-        structure = []
+        """Build market structure from price data using proper structure builder"""
+        from .structure_builder import build_market_structure
         
-        # Find swing highs and lows
-        swing_highs, swing_lows = detect_swing_points(data, window=3)
+        # Use lower prominence factor for better signal detection
+        prominence_factor = 1.5  # Much lower than default 7.5
+        structure = build_market_structure(data, prominence_factor=prominence_factor)
         
-        # Convert to structure points
-        for timestamp, price in swing_highs:
-            structure.append({
-                'timestamp': timestamp,
-                'price': price,
-                'type': 'HH'  # Simplified
-            })
-        
-        for timestamp, price in swing_lows:
-            structure.append({
-                'timestamp': timestamp,
-                'price': price,
-                'type': 'LL'  # Simplified
-            })
-        
-        # Sort by timestamp
-        structure.sort(key=lambda x: x['timestamp'])
         return structure
     
     def _is_trend_aligned(self, event: MarketEvent, trend: str) -> bool:
