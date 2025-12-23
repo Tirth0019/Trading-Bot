@@ -7,6 +7,7 @@ A comprehensive backtesting system for Smart Money Concepts (SMC) trading strate
 - [Overview](#overview)
 - [System Architecture](#system-architecture)
 - [Core Features](#core-features)
+- [📊 Workflow & Architecture Documentation](#-workflow--architecture-documentation) ⭐ **NEW**
 - [File Structure](#file-structure)
 - [Installation & Setup](#installation--setup)
 - [Quick Start Guide](#quick-start-guide)
@@ -37,6 +38,26 @@ The system is built with a modular architecture consisting of:
 - **Visualization System**: Interactive Plotly-based charts and dashboards
 - **Configuration Management**: Centralized parameter control with strategy presets
 - **Data Processing**: Efficient handling of multi-timeframe market data
+
+## 📊 Workflow & Architecture Documentation
+
+**📖 For detailed workflow, architecture, current issues, and improvement recommendations, see:**
+
+**[`WORKFLOW_README.md`](WORKFLOW_README.md)** - Comprehensive documentation covering:
+
+- ✅ **Complete Workflow**: Step-by-step process from data loading to trade execution
+- ✅ **Architecture Overview**: System components and design patterns
+- ✅ **Current Issues**: Critical bottlenecks and problems identified
+- ✅ **Performance Analysis**: Bottlenecks and optimization opportunities
+- ✅ **Improvement Roadmap**: Prioritized recommendations for fixes
+- ✅ **Debugging Guide**: How to troubleshoot signal generation issues
+
+**Key Findings:**
+- 🚨 **Signal Generation Problem**: Overly strict trend alignment filters out most signals
+- ⚠️ **Performance Bottlenecks**: Slow backtesting due to redundant calculations
+- 🔧 **Quick Fixes Available**: Immediate actions to improve signal generation
+
+---
 
 ## ⭐ Core Features
 
