@@ -73,6 +73,17 @@ class MultiTimeframeTradingExecutor:
         self.pip_value = pip_value
         self.atr_period = atr_period
         self.atr_multiplier = atr_multiplier
+
+        # Soft-gating thresholds for trend alignment (probabilistic-style)
+        # CHOCH: how confident reversal must be to allow going against prior HTF bias
+        self.CHOCH_REVERSAL_ALLOW: float = 0.65   # was 0.75
+        # BOS: how confident continuation must be when one TF is sideways
+        self.BOS_RELAXED_ALLOW: float = 0.50      # was ~0.55
+        # BOS in sideways/sideways conditions
+        self.SIDEWAYS_BOS_ALLOW: float = 0.60     # was ~0.65
+
+        # Latest 1H trend strength (0–1, based on slope/vol); used for soft gating
+        self._last_trend_strength_1h: float = 1.0
         
         # Initialize analyzers
         self.market_analyzer = MarketStructureAnalyzer(config={"confidence_thresholds": {"BOS": confidence_threshold, "CHOCH": confidence_threshold}})
@@ -88,17 +99,28 @@ class MultiTimeframeTradingExecutor:
         
         # Caching for performance optimization
         self._trend_cache: Dict[str, str] = {}  # Cache for 1H trends
+        self._trend_cache_15m: Dict[str, str] = {}  # Cache for 15M trends
         self._structure_cache: Dict[str, List] = {}  # Cache for market structures
         self._atr_cache: Dict[str, pd.Series] = {}  # Cache for ATR calculations
         
     def _select_trend_with_windows(self, df: pd.DataFrame, windows: List[int], swing_window: int) -> str:
         """
+        Backward-compatible wrapper: returns only trend direction.
+        """
+        trend, _ = self._select_trend_with_windows_with_strength(df, windows, swing_window)
+        return trend
+
+    def _select_trend_with_windows_with_strength(
+        self, df: pd.DataFrame, windows: List[int], swing_window: int
+    ) -> Tuple[str, float]:
+        """
         Evaluate multiple lookback windows and pick the trend with the better score
-        (slope / volatility). Also apply a recent-swing override to avoid excessive
+        (slope / volatility), plus a normalized strength metric in [0, 1].
+        Also apply a recent-swing override to avoid excessive
         'sideways' classifications in choppy data.
         """
         if df.empty:
-            return "sideways"
+            return "sideways", 0.0
 
         best_trend = "sideways"
         best_score = -float("inf")
@@ -110,13 +132,12 @@ class MultiTimeframeTradingExecutor:
             swing_highs, swing_lows = detect_swing_points(tail, window=swing_window)
             trend = detect_trend(swing_highs, swing_lows)
 
-            # Compute simple slope/vol score; penalize sideways less aggressively
             closes = tail["Close"]
             slope = (closes.iloc[-1] - closes.iloc[0]) / max(1, w)
             vol = closes.pct_change().std() or 1e-8
             score = slope / vol
             if trend == "sideways":
-                score *= 0.5  # softer penalty to allow mild trends through
+                score *= 0.7  # lighter penalty so mild trends beat flat noise
 
             if score > best_score:
                 best_score = score
@@ -133,22 +154,37 @@ class MultiTimeframeTradingExecutor:
             swing_df.append((ts, p, "low"))
         swing_df = sorted(swing_df, key=lambda x: x[0])
         if len(swing_df) >= 4:
-            # classify last swings
             ups = downs = 0
             for i in range(1, len(swing_df)):
                 cur = swing_df[i]
-                prev = swing_df[i-1]
+                prev = swing_df[i - 1]
                 if cur[2] == prev[2]:
                     if cur[1] > prev[1]:
                         ups += 1
                     elif cur[1] < prev[1]:
                         downs += 1
-            if ups >= downs + 2:
+            if ups >= downs + 1:
                 best_trend = "uptrend"
-            elif downs >= ups + 2:
+            elif downs >= ups + 1:
                 best_trend = "downtrend"
 
-        return best_trend
+        # If still sideways, bias by overall return of the latest longest window
+        if best_trend == "sideways" and len(df) >= min(windows):
+            overall_tail = df.tail(max(windows))
+            start_price = overall_tail["Close"].iloc[0]
+            end_price = overall_tail["Close"].iloc[-1]
+            overall_ret = (end_price - start_price) / max(1e-8, abs(start_price))
+            if overall_ret > 0.001:  # >0.1% move
+                best_trend = "uptrend"
+            elif overall_ret < -0.001:  # <-0.1% move
+                best_trend = "downtrend"
+
+        # Normalize strength from score; clamp to [0,1]
+        strength = 0.0
+        if best_trend != "sideways":
+            strength = min(1.0, max(0.0, abs(best_score) / 3.0))
+
+        return best_trend, strength
 
     def analyze_1h_trend(self, data_1h: pd.DataFrame, use_cache: bool = True) -> str:
         """
@@ -163,9 +199,10 @@ class MultiTimeframeTradingExecutor:
         if use_cache:
             cache_key = f"{data_1h.index[-1]}_{len(data_1h)}"
             if cache_key in self._trend_cache:
+                # When using cache, keep last known strength as-is
                 return self._trend_cache[cache_key]
 
-        trend = self._select_trend_with_windows(
+        trend, strength = self._select_trend_with_windows_with_strength(
             data_1h,
             windows=[12, 24],   # 12h (faster), 24h (cleaner)
             swing_window=3
@@ -177,6 +214,9 @@ class MultiTimeframeTradingExecutor:
             if len(self._trend_cache) > 1000:
                 oldest_key = next(iter(self._trend_cache))
                 del self._trend_cache[oldest_key]
+
+        # Store strength for alignment logic
+        self._last_trend_strength_1h = strength
 
         return trend
     
@@ -238,6 +278,10 @@ class MultiTimeframeTradingExecutor:
             return False
         if current_time <= event.timestamp:
             return False
+
+        # Optional shortcut: for strong BOS continuation, allow skipping retracement
+        if event.event_type == EventType.BOS and event.confidence >= 0.8:
+            return True
         
         # Get ATR for tolerance calculation using RiskManager
         atr_series = self.risk_manager.calculate_atr(data_15m_current)
@@ -339,14 +383,14 @@ class MultiTimeframeTradingExecutor:
         # FIXED: Enhanced confirmation criteria with corrected momentum filters
         if signal_direction == "BUY":
             return (is_green and 
-                   body_ratio >= 0.3 and  # Body size filter
-                   volume_ratio >= 1.2 and  # Volume filter
+                   body_ratio >= 0.2 and  # Body size filter (relaxed)
+                   volume_ratio >= 1.1 and  # Volume filter (relaxed)
                    (next_candle['High'] - next_candle['Close']) <= body_size * 0.2)  # Small upper wick (strong close)
         
         elif signal_direction == "SELL":
             return (is_red and 
-                   body_ratio >= 0.3 and  # Body size filter
-                   volume_ratio >= 1.2 and  # Volume filter
+                   body_ratio >= 0.2 and  # Body size filter (relaxed)
+                   volume_ratio >= 1.1 and  # Volume filter (relaxed)
                    (next_candle['Close'] - next_candle['Low']) <= body_size * 0.2)  # Small lower wick (strong close)
         
         return False
@@ -362,11 +406,25 @@ class MultiTimeframeTradingExecutor:
         if len(data_15m) < 20:
             return False
 
-        trend_15m = self._select_trend_with_windows(
-            data_15m,
-            windows=[48, 96],  # 12h and 24h of 15M bars
-            swing_window=2
-        )
+        cache_key_15m = f"{data_15m.index[-1]}_{len(data_15m)}"
+        if cache_key_15m in self._trend_cache_15m:
+            trend_15m = self._trend_cache_15m[cache_key_15m]
+        else:
+            trend_15m = self._select_trend_with_windows(
+                data_15m,
+                windows=[48, 96],  # 12h and 24h of 15M bars
+                swing_window=2
+            )
+            self._trend_cache_15m[cache_key_15m] = trend_15m
+            if len(self._trend_cache_15m) > 1000:
+                oldest_key = next(iter(self._trend_cache_15m))
+                del self._trend_cache_15m[oldest_key]
+
+        # Soft notion of HTF trend strength (0–1) from last 1H analysis
+        trend_strength_1h = getattr(self, "_last_trend_strength_1h", 1.0)
+        strong_down = trend_1h == "downtrend" and trend_strength_1h > 0.6
+        strong_up = trend_1h == "uptrend" and trend_strength_1h > 0.6
+        strong_trend = strong_down or strong_up
 
         is_bull = event.direction in ["BUY", "Bullish"]
         is_bear = event.direction in ["SELL", "Bearish"]
@@ -391,31 +449,46 @@ class MultiTimeframeTradingExecutor:
 
         # Helper: sideways-sideways allowance for strong events
         def sideways_high_confidence() -> bool:
-            return trend_1h == "sideways" and trend_15m == "sideways" and event.confidence >= 0.6
+            return trend_1h == "sideways" and trend_15m == "sideways" and event.confidence >= 0.5
 
         # CHOCH (reversal) – be more permissive (trend change signal)
         if is_choch:
             if is_bull:
                 if aligned(True) or relaxed(True) or sideways_high_confidence():
-                    # Only block if clear opposite trend
-                    return trend_1h != "downtrend" and trend_15m != "downtrend"
+                    # Only block if clear, strong opposite HTF trend
+                    return not (strong_down and trend_15m == "downtrend")
+                # Allow reversal against current strong 1H only if 15M flips hard with high confidence
+                if strong_down and trend_15m == "uptrend" and event.confidence >= self.CHOCH_REVERSAL_ALLOW:
+                    return True
             if is_bear:
                 if aligned(False) or relaxed(False) or sideways_high_confidence():
-                    return trend_1h != "uptrend" and trend_15m != "uptrend"
+                    return not (strong_up and trend_15m == "uptrend")
+                if strong_up and trend_15m == "downtrend" and event.confidence >= self.CHOCH_REVERSAL_ALLOW:
+                    return True
             return False
 
         # BOS (continuation) – keep stricter, but allow relaxed if confidence high
         if is_bos:
             if is_bull:
+                # In a strong HTF uptrend/downtrend, BOS is continuation – allow more easily
+                if strong_trend and event.confidence >= self.BOS_RELAXED_ALLOW:
+                    return True
                 if aligned(True):
                     return True
-                if relaxed(True) and event.confidence >= 0.6:
+                if relaxed(True) and event.confidence >= self.BOS_RELAXED_ALLOW:
+                    return True
+                # Allow sideways+sideways only for very strong BOS
+                if sideways_high_confidence() and event.confidence >= self.SIDEWAYS_BOS_ALLOW:
                     return True
                 return False
             if is_bear:
+                if strong_trend and event.confidence >= self.BOS_RELAXED_ALLOW:
+                    return True
                 if aligned(False):
                     return True
-                if relaxed(False) and event.confidence >= 0.6:
+                if relaxed(False) and event.confidence >= self.BOS_RELAXED_ALLOW:
+                    return True
+                if sideways_high_confidence() and event.confidence >= self.SIDEWAYS_BOS_ALLOW:
                     return True
                 return False
 
