@@ -1,0 +1,69 @@
+======================================================================
+🚀 CENTRALIZED TRADING BOT - BACKTEST MODE
+======================================================================
+
+📊 Configuration:
+   Symbol: XAUUSD
+   Data File: data\XAUUSD_M1.csv
+   Days Back: 5
+   Risk per Trade: 1.0%
+   Confidence Threshold: 0.6
+   ATR Multiplier: 2.5
+   Risk-Reward Ratio: 2.0:1
+
+🚀 Starting Integrated Backtester for XAUUSD
+📊 Using sophisticated MultiTimeframeTradingExecutor
+📅 Analyzing last 5 days
+============================================================
+📈 Data file: data\XAUUSD_M1.csv
+
+📋 Configuration:
+   Symbol: XAUUSD
+   Risk per trade: 1.0%
+   Confidence threshold: 0.6
+   ATR multiplier: 2.5
+   Days to analyze: 5
+
+🎯 Executing sophisticated multi-timeframe strategy...
+🚀 Starting PROPER Multi-Timeframe Trading Strategy for XAUUSD
+📊 Analyzing 5 days of data
+⚠️  PROPER BACKTESTING: Candle-by-candle simulation
+📈 Loading and resampling data...
+🔄 Backtesting from 2025-07-11 19:59:00+00:00 to 2025-07-16 19:00:00+00:00
+📊 Processing 15M candles (entry timeframe) candle-by-candle...
+
+🎉 PROPER BACKTESTING COMPLETE!
+📊 Results Summary:
+   Signals Generated: 0
+   Trades Executed: 0
+   Trades Closed: 0
+   Total P&L: $0.00
+   Winning Trades: 0
+   Losing Trades: 0
+
+📊 Detailed Funnel Metrics:
+   1. Total Events: 683
+   2. Events Passing Alignment: 485
+   3. Events After Retracement: 0
+   4. Events After 1M Confirmation: 0
+   5. Final Trades Executed: 0
+
+============================================================
+📊 BACKTEST RESULTS
+============================================================
+📈 Total Signals Generated: 0
+🚀 Trades Executed: 0
+✅ Trades Closed: 0
+💰 Total P&L: $0.00
+🎯 Winning Trades: 0
+❌ Losing Trades: 0
+📊 Win Rate: N/A (no closed trades)
+💰 BREAK-EVEN STRATEGY
+
+🔧 OPTIMIZATION NEEDED:
+   - No signals generated
+   - Consider reducing confidence_threshold
+   - Check BOS/CHOCH detection parameters
+   - Try different instruments (trending markets)
+
+✅ Operation completed successfully!

@@ -91,7 +91,7 @@ class TradingBot:
             Dictionary with backtest results
         """
         print("=" * 70)
-        print("🚀 CENTRALIZED TRADING BOT - BACKTEST MODE")
+        print("[START] CENTRALIZED TRADING BOT - BACKTEST MODE")
         print("=" * 70)
         
         # Auto-detect data file if not provided
@@ -100,7 +100,7 @@ class TradingBot:
             if data_file is None:
                 return {"error": "No data file found"}
         
-        print(f"\n📊 Configuration:")
+        print(f"\n[INFO] Configuration:")
         print(f"   Symbol: {self.symbol}")
         print(f"   Data File: {data_file}")
         print(f"   Days Back: {days_back}")
@@ -304,6 +304,7 @@ Examples:
     parser.add_argument("--atr", type=float, default=2.5, help="ATR multiplier (default: 2.5)")
     parser.add_argument("--rr", type=float, default=2.0, help="Risk-reward ratio (default: 2.0)")
     parser.add_argument("--data", type=str, default=None, help="Path to data file (auto-detects if not provided)")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     
     args = parser.parse_args()
     

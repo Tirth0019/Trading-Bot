@@ -22,7 +22,9 @@ class TradeSignal:
     take_profit: float
     confidence: float
     timeframe_1h_trend: str
+
     timeframe_15m_entry: str
+    event_type: str  # NEW: explicit event type (BOS/CHOCH)
     timeframe_1m_confirmation: str
     risk_reward_ratio: float
     stop_loss_pips: float
@@ -102,6 +104,15 @@ class MultiTimeframeTradingExecutor:
         self._trend_cache_15m: Dict[str, str] = {}  # Cache for 15M trends
         self._structure_cache: Dict[str, List] = {}  # Cache for market structures
         self._atr_cache: Dict[str, pd.Series] = {}  # Cache for ATR calculations
+        
+        # Statistics collection
+        self.stats = {
+            'total_events': 0,
+            'aligned_events': 0,
+            'retracement_events': 0,
+            'confirmed_1m_events': 0,
+            'processed_candles': 0
+        }
         
     def _select_trend_with_windows(self, df: pd.DataFrame, windows: List[int], swing_window: int) -> str:
         """
@@ -244,12 +255,20 @@ class MultiTimeframeTradingExecutor:
         # Filter for A+ quality entries with basic criteria only
         a_plus_events = []
         
+        # Track total events for stats
+        if hasattr(self, 'stats'):
+            self.stats['total_events'] += len(events)
+        
         for event in events:
             if event.confidence >= self.confidence_threshold:
                 # Check trend alignment (1H + 15M trends must match)
                 if self._is_trend_aligned_enhanced(event, trend_1h, data_15m):
                     # NOTE: Retracement confirmation is now done separately in point-in-time processing
                     a_plus_events.append(event)
+        
+        # Track aligned events for stats
+        if hasattr(self, 'stats'):
+            self.stats['aligned_events'] += len(a_plus_events)
         
         return a_plus_events
     
@@ -276,12 +295,23 @@ class MultiTimeframeTradingExecutor:
             return False
         if data_15m_current.index.max() <= event.timestamp:
             return False
-        if current_time <= event.timestamp:
-            return False
+            
+        # FIX 1: Removed outdated timestamp check that prevented retracement evaluation
+        # (check_retracement must check FUTURE candles, which requires current_time > event.timestamp)
 
-        # Optional shortcut: for strong BOS continuation, allow skipping retracement
-        if event.event_type == EventType.BOS and event.confidence >= 0.8:
-            return True
+        # --- HARD BYPASS FOR STRONG BOS CONTINUATION ---
+        # 1️⃣ Normalize event type (Must use event.event_type as observed in codebase)
+        event_type_str = str(event.event_type).lower()
+        is_bos = "bos" in event_type_str
+
+        if is_bos:
+            trend_strength_1h = getattr(self, "_last_trend_strength_1h", 1.0)
+            # DEBUG PRINT
+            # print(f"DEBUG: BOS Check - Strength: {trend_strength_1h:.2f}, Conf: {event.confidence:.2f}")
+            if trend_strength_1h > 0.6 and event.confidence >= 0.6:
+                return True
+
+
         
         # Get ATR for tolerance calculation using RiskManager
         atr_series = self.risk_manager.calculate_atr(data_15m_current)
@@ -289,7 +319,7 @@ class MultiTimeframeTradingExecutor:
             return False
         
         current_atr = atr_series.iloc[-1]
-        tolerance = current_atr * 0.5  # 0.5 ATR tolerance
+        tolerance = current_atr * 1.2  # Increased from 0.5 to 1.2 ATR tolerance (REALISTIC)
         
         # Get recent price data after the event but before current time
         event_time = event.timestamp
@@ -334,67 +364,6 @@ class MultiTimeframeTradingExecutor:
             # For bearish events, look for bearish reversal patterns
             return self._is_bearish_reversal_candle(prev_candle, reversal_candle, broken_level, tolerance)
         
-        return False
-    
-    def confirm_1m_signal(self, 
-                          data_1m: pd.DataFrame, 
-                          signal_direction: str, 
-                          entry_time: pd.Timestamp) -> bool:
-        """
-        FIXED: Enhanced 1M signal confirmation with corrected logic and momentum filters
-        
-        Args:
-            data_1m: 1M timeframe OHLCV data
-            signal_direction: "BUY" or "SELL"
-            entry_time: Timestamp of the entry signal
-            
-        Returns:
-            True if confirmation is valid, False otherwise
-        """
-        if data_1m.empty or len(data_1m) < 20:
-            return False
-        
-        # Ensure 1M data spans the event time and at least one candle after
-        if data_1m.index.min() > entry_time:
-            return False
-        if data_1m.index.max() <= entry_time:
-            return False
-        
-        # FIXED: Get the first 1M candle that occurred *after* the entry signal time
-        future_candles = data_1m[data_1m.index > entry_time]
-        if future_candles.empty:
-            return False
-        
-        next_candle = future_candles.iloc[0]  # Use iloc[0] for robustness
-        
-        # Calculate candle body size (minimum 30% of total range)
-        candle_range = next_candle['High'] - next_candle['Low']
-        body_size = abs(next_candle['Close'] - next_candle['Open'])
-        body_ratio = body_size / candle_range if candle_range > 0 else 0
-        
-        # Volume filter (20% above average volume)
-        recent_volume = data_1m['Volume'].tail(20).mean()
-        volume_ratio = next_candle['Volume'] / recent_volume if recent_volume > 0 else 1
-        
-        # Determine candle direction
-        is_green = next_candle['Close'] > next_candle['Open']
-        is_red = next_candle['Close'] < next_candle['Open']
-        
-        # FIXED: Enhanced confirmation criteria with corrected momentum filters
-        if signal_direction == "BUY":
-            return (is_green and 
-                   body_ratio >= 0.2 and  # Body size filter (relaxed)
-                   volume_ratio >= 1.1 and  # Volume filter (relaxed)
-                   (next_candle['High'] - next_candle['Close']) <= body_size * 0.2)  # Small upper wick (strong close)
-        
-        elif signal_direction == "SELL":
-            return (is_red and 
-                   body_ratio >= 0.2 and  # Body size filter (relaxed)
-                   volume_ratio >= 1.1 and  # Volume filter (relaxed)
-                   (next_candle['Close'] - next_candle['Low']) <= body_size * 0.2)  # Small lower wick (strong close)
-        
-        return False
-    
     def _is_trend_aligned_enhanced(self, event: MarketEvent, trend_1h: str, data_15m: pd.DataFrame) -> bool:
         """
         Enhanced trend alignment check: 1H + 15M trends must match.
@@ -583,6 +552,8 @@ class MultiTimeframeTradingExecutor:
             (reversal_candle['Open'] - reversal_candle['Close']) >= 
             (reversal_candle['High'] - reversal_candle['Low']) * 0.6):  # Strong body (60%+)
             return True
+            
+        # FIX 3: Removed faulty fallback that referenced undefined 'event' variable
         
         return False
     
@@ -624,7 +595,9 @@ class MultiTimeframeTradingExecutor:
             take_profit=0.0,  # Will be calculated at execution time with ATR
             confidence=event.confidence,
             timeframe_1h_trend=trend_1h,
+
             timeframe_15m_entry=f"{event.event_type.value} - {event.direction}",
+            event_type=event.event_type.value,  # NEW
             timeframe_1m_confirmation="PENDING",
             risk_reward_ratio=self.risk_reward_ratio,
             stop_loss_pips=self.stop_loss_pips,
@@ -649,7 +622,7 @@ class MultiTimeframeTradingExecutor:
             Executed trade or None if execution fails
         """
         # Wait for 1M confirmation
-        if not self.confirm_1m_signal(data_1m, signal.direction, signal.timestamp):
+        if not self.confirm_1m_signal(data_1m, signal.direction, signal.timestamp, signal.event_type):
             return None
         
         # Prefer ATR-based stops from 15M timeframe without lookahead
@@ -662,11 +635,12 @@ class MultiTimeframeTradingExecutor:
                 atr_series = self.risk_manager.calculate_atr(data_pre_entry)
                 if len(atr_series) > 0 and not pd.isna(atr_series.iloc[-1]):
                     atr_value = atr_series.iloc[-1]
+                    start_market_price = signal.entry_price
                     stop_loss, take_profit = self.risk_manager.compute_stop_and_target_from_atr(
-                        entry_price=signal.entry_price,
-                        direction=signal.direction,
-                        atr_value=atr_value,
-                        reward_risk_ratio=self.risk_reward_ratio
+                        start_market_price,
+                        signal.direction,
+                        atr_value,
+                        self.risk_reward_ratio
                     )
 
         # IMPROVED: Reduced risk sizing (1% instead of 2%)
@@ -677,7 +651,9 @@ class MultiTimeframeTradingExecutor:
         position_size = self.risk_manager.calculate_position_size(
             entry_price=signal.entry_price,
             stop_loss=stop_loss,
-            risk_amount=risk_amount
+            risk_amount=risk_amount,
+            account_balance=account_balance,
+            symbol=self.symbol
         )
         
         # Create trade execution
@@ -719,14 +695,14 @@ class MultiTimeframeTradingExecutor:
             Executed trade or None if execution fails
         """
         # CRITICAL FIX: Get the actual entry price from 1M confirmation candle
-        confirmation_candle = self._get_confirmation_candle_price(data_1m_current, signal.direction, signal.timestamp, current_time)
+        confirmation_candle = self._get_confirmation_candle_price(data_1m_current, signal.direction, signal.timestamp, current_time, signal.event_type)
         if confirmation_candle is None:
             return None
         
         actual_entry_price = confirmation_candle['Close']  # Use close of confirmation candle
         
         # Wait for 1M confirmation with current data only
-        if not self.confirm_1m_signal_point_in_time(data_1m_current, signal.direction, signal.timestamp, current_time):
+        if not self.confirm_1m_signal_point_in_time(data_1m_current, signal.direction, signal.timestamp, current_time, signal.event_type):
             return None
         
         # Calculate ATR-based stops using RiskManager consistently
@@ -746,11 +722,11 @@ class MultiTimeframeTradingExecutor:
                         atr_value = atr_series.iloc[-1]
                         # Use RiskManager for all risk calculations with ACTUAL entry price
                         risk_result = self.risk_manager.compute_stop_and_target_from_atr(
-                            entry_price=actual_entry_price,  # Use actual entry price from 1M candle
-                            direction=signal.direction,
-                            atr_value=atr_value,
-                            reward_risk_ratio=self.risk_reward_ratio,
-                            symbol=self.symbol
+                            actual_entry_price,
+                            signal.direction,
+                            atr_value,
+                            self.risk_reward_ratio,
+                            self.symbol
                         )
                         if risk_result is not None:
                             stop_loss, take_profit = risk_result
@@ -799,78 +775,100 @@ class MultiTimeframeTradingExecutor:
                                      data_1m_current: pd.DataFrame, 
                                      signal_direction: str, 
                                      entry_time: pd.Timestamp,
-                                     current_time: pd.Timestamp) -> Optional[pd.Series]:
+                                     current_time: pd.Timestamp,
+                                     event_type: str = "BOS") -> Optional[pd.Series]:
         """
-        Get the actual confirmation candle price for realistic entry execution
+        Get the actual confirmation candle price using Asymmetric Logic
         
         Args:
             data_1m_current: 1M data up to current time only
             signal_direction: BUY or SELL
             entry_time: When the signal was generated
             current_time: Current timestamp
+            event_type: BOS or CHOCH
             
         Returns:
             Confirmation candle data or None if not found
         """
         # Find 1M candles after the entry signal time
         future_candles = data_1m_current[data_1m_current.index > entry_time]
-        
         if future_candles.empty:
             return None
         
         # Get the first 1M candle that occurred after the entry signal time
         confirmation_candle = future_candles.iloc[0]
         
-        # Apply the same improved filters as confirm_1m_signal_point_in_time
+        # Apply the same logic as confirm_1m_signal
+        
+        # Check if this candle WOULD confirm the signal
+        is_confirmed = False
+        
         # Calculate candle metrics
         candle_range = confirmation_candle['High'] - confirmation_candle['Low']
         body_size = abs(confirmation_candle['Close'] - confirmation_candle['Open'])
         body_ratio = body_size / candle_range if candle_range > 0 else 0
         
-        # Volume filter (optional - only if volume data is reliable)
+        # Volume filter
         volume_confirmation = True
         if 'Volume' in data_1m_current.columns and data_1m_current['Volume'].sum() > 0:
             recent_volume = data_1m_current['Volume'].tail(20).mean()
             volume_ratio = confirmation_candle['Volume'] / recent_volume if recent_volume > 0 else 1
-            volume_confirmation = volume_ratio >= 1.1  # Reduced from 1.2 to 1.1
-        
-        # Direction confirmation
+            volume_confirmation = volume_ratio >= 1.1
+            
+        # Direction
         is_green = confirmation_candle['Close'] > confirmation_candle['Open']
         is_red = confirmation_candle['Close'] < confirmation_candle['Open']
         
-        # IMPROVED: Use OR logic for better signal capture (same as confirm_1m_signal_point_in_time)
-        if signal_direction == "BUY":
-            # At least one of these must be true:
-            strong_body = body_ratio >= 0.25  # Reduced from 0.3
-            good_volume = volume_confirmation
-            strong_momentum = is_green and (confirmation_candle['High'] - confirmation_candle['Close']) <= body_size * 0.3
-            
-            if not (is_green and (strong_body or (good_volume and strong_momentum))):
-                return None
-        elif signal_direction == "SELL":
-            # At least one of these must be true:
-            strong_body = body_ratio >= 0.25  # Reduced from 0.3
-            good_volume = volume_confirmation
-            strong_momentum = is_red and (confirmation_candle['Close'] - confirmation_candle['Low']) <= body_size * 0.3
-            
-            if not (is_red and (strong_body or (good_volume and strong_momentum))):
-                return None
+        # Micro BOS check
+        has_micro_bos = False
+        recent_1m = data_1m_current[data_1m_current.index < confirmation_candle.name].tail(30)
+        if len(recent_1m) >= 5:
+            swings_high, swings_low = detect_swing_points(recent_1m, window=3)
+            if signal_direction == "BUY":
+                if swings_high:
+                    recent_high = swings_high[-1][1]
+                    if confirmation_candle['Close'] > recent_high:
+                        has_micro_bos = True
+            elif signal_direction == "SELL":
+                 if swings_low:
+                    recent_low = swings_low[-1][1]
+                    if confirmation_candle['Close'] < recent_low:
+                        has_micro_bos = True
         
+        # Verify Confirmation
+        if event_type == "CHOCH":
+            if signal_direction == "BUY":
+                is_momentum = is_green and (body_ratio >= 0.3 or volume_confirmation)
+                is_confirmed = is_momentum or has_micro_bos
+            elif signal_direction == "SELL":
+                is_momentum = is_red and (body_ratio >= 0.3 or volume_confirmation)
+                is_confirmed = is_momentum or has_micro_bos
+        else: # BOS
+            if signal_direction == "BUY":
+                is_confirmed = has_micro_bos
+            elif signal_direction == "SELL":
+                is_confirmed = has_micro_bos
+                
+        if not is_confirmed:
+            return None
+            
         return confirmation_candle
     
     def confirm_1m_signal_point_in_time(self, 
                                        data_1m_current: pd.DataFrame, 
                                        signal_direction: str, 
                                        entry_time: pd.Timestamp,
-                                       current_time: pd.Timestamp) -> bool:
+                                       current_time: pd.Timestamp,
+                                       event_type: str = "BOS") -> bool:
         """
-        IMPROVED: More flexible 1M signal confirmation with configurable thresholds
+        IMPROVED: Asymmetric 1M signal confirmation (Weaker for CHOCH, Stronger for BOS)
         
         Args:
             data_1m_current: 1M data up to current time only
             signal_direction: "BUY" or "SELL"
             entry_time: Timestamp of the entry signal
             current_time: Current timestamp
+            event_type: "BOS" or "CHOCH"
             
         Returns:
             True if confirmation is valid, False otherwise
@@ -893,34 +891,82 @@ class MultiTimeframeTradingExecutor:
         body_size = abs(next_candle['Close'] - next_candle['Open'])
         body_ratio = body_size / candle_range if candle_range > 0 else 0
         
-        # Volume filter (optional - only if volume data is reliable)
+        # Volume filter
         volume_confirmation = True
         if 'Volume' in data_1m_current.columns and data_1m_current['Volume'].sum() > 0:
             recent_volume = data_1m_current['Volume'].tail(20).mean()
             volume_ratio = next_candle['Volume'] / recent_volume if recent_volume > 0 else 1
-            volume_confirmation = volume_ratio >= 1.1  # Reduced from 1.2 to 1.1
+            volume_confirmation = volume_ratio >= 1.1
         
         # Direction confirmation
         is_green = next_candle['Close'] > next_candle['Open']
         is_red = next_candle['Close'] < next_candle['Open']
         
-        # IMPROVED: Use OR logic for better signal capture
-        if signal_direction == "BUY":
-            # At least one of these must be true:
-            strong_body = body_ratio >= 0.25  # Reduced from 0.3
-            good_volume = volume_confirmation
-            strong_momentum = is_green and (next_candle['High'] - next_candle['Close']) <= body_size * 0.3
-            
-            return is_green and (strong_body or (good_volume and strong_momentum))
+        # --- ASYMMETRIC LOGIC ---
         
-        elif signal_direction == "SELL":
-            # At least one of these must be true:
-            strong_body = body_ratio >= 0.25  # Reduced from 0.3
-            good_volume = volume_confirmation
-            strong_momentum = is_red and (next_candle['Close'] - next_candle['Low']) <= body_size * 0.3
+        # Helper: Check for micro BOS (break of recent 1M swing)
+        has_micro_bos = False
+        # Get recent 1M data before the confirmation candle
+        recent_1m = data_1m_current[data_1m_current.index < next_candle.name].tail(30)
+        if len(recent_1m) >= 5:
+            swings_high, swings_low = detect_swing_points(recent_1m, window=3)
             
-            return is_red and (strong_body or (good_volume and strong_momentum))
+            if signal_direction == "BUY":
+                # Check for break of recent swing high
+                if swings_high:
+                    recent_high = swings_high[-1][1] # (timestamp, price)
+                    if next_candle['Close'] > recent_high:
+                        has_micro_bos = True
+                        
+            elif signal_direction == "SELL":
+                 # Check for break of recent swing low
+                if swings_low:
+                    recent_low = swings_low[-1][1]
+                    if next_candle['Close'] < recent_low:
+                        has_micro_bos = True
         
+        # CHOCH Logic: Allow if (Momentum OR Volume OR Micro BOS)
+        if event_type == "CHOCH":
+            if signal_direction == "BUY":
+                is_momentum = is_green and (body_ratio >= 0.3 or volume_confirmation)
+                if has_micro_bos:
+                    print(f"✅ 1M CONFIRM (CHOCH): micro BOS - {next_candle.name}")
+                    return True
+                elif is_momentum:
+                    print(f"✅ 1M CONFIRM (CHOCH): micro momentum - {next_candle.name}")
+                    return True
+                else:
+                    print(f"❌ 1M REJECT (CHOCH) - {next_candle.name}")
+                    return False
+            elif signal_direction == "SELL":
+                is_momentum = is_red and (body_ratio >= 0.3 or volume_confirmation)
+                if has_micro_bos:
+                    print(f"✅ 1M CONFIRM (CHOCH): micro BOS - {next_candle.name}")
+                    return True
+                elif is_momentum:
+                    print(f"✅ 1M CONFIRM (CHOCH): micro momentum - {next_candle.name}")
+                    return True
+                else:
+                    print(f"❌ 1M REJECT (CHOCH) - {next_candle.name}")
+                    return False
+
+        # BOS Logic: Require Micro BOS (Structure)
+        else: # BOS or others
+            if signal_direction == "BUY":
+                if has_micro_bos:
+                    print(f"✅ 1M CONFIRM (BOS): micro BOS - {next_candle.name}")
+                    return True
+                else:
+                    print(f"❌ 1M REJECT (BOS): no BOS - {next_candle.name}")
+                    return False
+            elif signal_direction == "SELL":
+                if has_micro_bos:
+                    print(f"✅ 1M CONFIRM (BOS): micro BOS - {next_candle.name}")
+                    return True
+                else:
+                    print(f"❌ 1M REJECT (BOS): no BOS - {next_candle.name}")
+                    return False
+
         return False
     
     def monitor_open_trades_point_in_time(self, 
@@ -1041,6 +1087,15 @@ class MultiTimeframeTradingExecutor:
         self._resampled_data = resampled_data
         
         # Initialize results
+        # Initialize/Reset results
+        self.stats = {
+            'total_events': 0,
+            'aligned_events': 0,
+            'retracement_events': 0,
+            'confirmed_1m_events': 0,
+            'processed_candles': 0
+        }
+
         results = {
             'signals_generated': 0,
             'trades_executed': 0,
@@ -1074,6 +1129,8 @@ class MultiTimeframeTradingExecutor:
         # PROPER BACKTESTING: Iterate through 15M candles (entry timeframe)
         for idx, (current_timestamp, current_candle) in enumerate(data_15m.loc[start_time:end_time].iterrows()):
             
+            self.stats['processed_candles'] += 1
+            
             # Get historical data available UP TO the current timestamp (NO FUTURE DATA)
             hist_1h = data_1h.loc[data_1h.index < current_timestamp]
             hist_15m = data_15m.loc[data_15m.index < current_timestamp]
@@ -1092,11 +1149,28 @@ class MultiTimeframeTradingExecutor:
             # STEP 2: Check for A+ entries on 15M (include current candle)
             # We check for events on the most recent 15M candle (current_candle)
             current_15m_data = pd.concat([hist_15m, current_candle.to_frame().T])
+            # Stats for total/aligned events are updated inside this method
             a_plus_events = self.find_a_plus_entries_15m(current_15m_data, trend_1h)
             
             # Process events that occurred on the current timestamp
             for event in a_plus_events:
-                if event.timestamp == current_timestamp:
+                # FIX 2: Check for ANY unconfirmed event in the past (not just 'now')
+                # Retracement takes time, so we must check T+1, T+2...
+                if event.timestamp < current_timestamp:
+                    
+                    # Deduplication: Don't re-process events we already have signals for
+                    event_id = f"{event.event_type.value} - {event.direction}"
+                    already_signaled = False
+                    for s in self.signals:
+                        if s.timestamp == event.timestamp and s.timeframe_15m_entry == event_id:
+                            already_signaled = True
+                            break
+                    if already_signaled:
+                        continue
+                        
+                    # Also skip if event is too old (> 2 days) to avoid performance degradation
+                    if (current_timestamp - event.timestamp).total_seconds() > 172800:
+                         continue
                     print(f"\n🎯 NEW {event.event_type.value} - {event.direction} entry at {current_timestamp}")
                     print(f"   Confidence: {event.confidence:.2f}")
                     print(f"   Price: {event.price:.5f}")
@@ -1104,6 +1178,7 @@ class MultiTimeframeTradingExecutor:
                     # STEP 3: Check retracement confirmation with historical data only
                     if self.check_retracement_confirmation_point_in_time(event, current_15m_data, current_timestamp):
                         print("   ✅ Retracement confirmation passed")
+                        self.stats['retracement_events'] += 1
                         
                         # STEP 4: Generate trade signal (entry price will be determined at execution)
                         signal = self.generate_trade_signal(event, trend_1h, current_candle['Close'])
@@ -1122,6 +1197,7 @@ class MultiTimeframeTradingExecutor:
                         
                         if trade:
                             results['trades_executed'] += 1
+                            self.stats['confirmed_1m_events'] += 1
                             print(f"   🚀 Trade executed: {trade.position_size:.2f} units")
                         else:
                             print("   ⏳ Waiting for 1M confirmation...")
@@ -1156,6 +1232,25 @@ class MultiTimeframeTradingExecutor:
         if results['trades_closed'] > 0:
             win_rate = (results['winning_trades'] / results['trades_closed']) * 100
             print(f"   Win Rate: {win_rate:.1f}%")
+            
+            # Calculate Avg R
+            total_r = 0
+            for trade in self.executed_trades:
+                if trade.status == "CLOSED" and trade.pnl is not None and trade.stop_loss is not None:
+                    risk = abs(trade.entry_price - trade.stop_loss) * trade.position_size
+                    if risk > 0:
+                        r_multiple = trade.pnl / risk
+                        total_r += r_multiple
+            
+            avg_r = total_r / results['trades_closed']
+            print(f"   Avg R: {avg_r:.2f}R")
+            
+        print("\n📊 Detailed Funnel Metrics:")
+        print(f"   1. Total Events: {self.stats['total_events']}")
+        print(f"   2. Events Passing Alignment: {self.stats['aligned_events']}")
+        print(f"   3. Events After Retracement: {self.stats['retracement_events']}")
+        print(f"   4. Events After 1M Confirmation: {self.stats['confirmed_1m_events']}")
+        print(f"   5. Final Trades Executed: {results['trades_executed']}")
         
         return results
     
