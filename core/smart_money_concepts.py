@@ -398,6 +398,10 @@ class MarketStructureAnalyzer:
         last_ll = None
         prev_hh = None  # Previous HH for BOS detection
         prev_ll = None  # Previous LL for BOS detection
+        
+        # STRUCTURE LOCKING: Track last broken level to prevent duplicate CHOCHs
+        last_choch_level = None  # timestamp of the broken structural point
+        last_choch_direction = None
 
         for i in range(1, len(structure)):  # Start from index 1 to process all swing points
             current = structure[i]
@@ -427,6 +431,12 @@ class MarketStructureAnalyzer:
                 if current.swing_type == SwingType.LL:
                     if last_hl and current.price < last_hl.price:
                         # This is a true CHOCH - trend change from bullish to bearish
+                        
+                        # Prevent duplicate CHOCH on same structure
+                        if last_choch_level == last_hl.timestamp and last_choch_direction == "Bearish":
+                            choch_detected = True
+                            continue
+
                         if last_hh:  # QML level
                             confidence = self._calculate_confidence(current, last_hl, last_hh, EventType.CHOCH)
                             quality_score = self._calculate_quality_score(current, last_hl, last_hh, EventType.CHOCH)
@@ -447,12 +457,22 @@ class MarketStructureAnalyzer:
                                     description=f"Bearish CHOCH: {current.swing_type.value} @ {current.price:.2f} broke uptrend support @ {last_hl.price:.2f}"
                                 ))
                                 choch_detected = True
+                                
+                                # Update Structure Lock
+                                last_choch_level = last_hl.timestamp
+                                last_choch_direction = "Bearish"
             
             elif trend_before == "downtrend":
                 # Bullish CHOCH: Must be a new HH breaking above previous LH
                 if current.swing_type == SwingType.HH:
                     if last_lh and current.price > last_lh.price:
                         # This is a true CHOCH - trend change from bearish to bullish
+                        
+                        # Prevent duplicate CHOCH on same structure
+                        if last_choch_level == last_lh.timestamp and last_choch_direction == "Bullish":
+                            choch_detected = True
+                            continue
+
                         if last_ll:  # QML level
                             confidence = self._calculate_confidence(current, last_lh, last_ll, EventType.CHOCH)
                             quality_score = self._calculate_quality_score(current, last_lh, last_ll, EventType.CHOCH)
@@ -473,6 +493,10 @@ class MarketStructureAnalyzer:
                                     description=f"Bullish CHOCH: {current.swing_type.value} @ {current.price:.2f} broke downtrend resistance @ {last_lh.price:.2f}"
                                 ))
                                 choch_detected = True
+                                
+                                # Update Structure Lock
+                                last_choch_level = last_lh.timestamp
+                                last_choch_direction = "Bullish"
 
             # --- OPTIMIZED BOS Detection (Only if no CHOCH detected) ---
             if not choch_detected and current.swing_type == SwingType.HH:

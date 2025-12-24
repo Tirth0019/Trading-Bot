@@ -87,6 +87,10 @@ class MultiTimeframeTradingExecutor:
         # Latest 1H trend strength (0–1, based on slope/vol); used for soft gating
         self._last_trend_strength_1h: float = 1.0
         
+        # --- HARD STRUCTURE LOCK STATE ---
+        self._last_major_event_type: str | None = None     # "CHOCH" or "BOS"
+        self._last_major_event_direction: str | None = None  # "Bullish" / "Bearish"
+        
         # Initialize analyzers
         self.market_analyzer = MarketStructureAnalyzer(config={"confidence_thresholds": {"BOS": confidence_threshold, "CHOCH": confidence_threshold}})
         self.risk_manager = RiskManager(risk_per_trade=risk_per_trade,
@@ -621,6 +625,21 @@ class MultiTimeframeTradingExecutor:
         Returns:
             Executed trade or None if execution fails
         """
+        # --- HARD STRUCTURE LOCK (EXECUTION LEVEL) ---
+        # Rule: Only ONE CHOCH per structure leg. Must wait for BOS to unlock.
+        
+        # NOTE: signal.event_type is a string ("BOS" or "CHOCH"), so we compare with .value
+        if signal.event_type == EventType.CHOCH.value:
+            if (
+                self._last_major_event_type == "CHOCH"
+                and self._last_major_event_direction == signal.direction
+            ):
+                print(
+                    f"🔒 EXECUTION LOCK: {signal.direction} CHOCH rejected "
+                    f"(Waiting for BOS to unlock structure)"
+                )
+                return None
+
         # Wait for 1M confirmation
         if not self.confirm_1m_signal(data_1m, signal.direction, signal.timestamp, signal.event_type):
             return None
@@ -640,7 +659,8 @@ class MultiTimeframeTradingExecutor:
                         start_market_price,
                         signal.direction,
                         atr_value,
-                        self.risk_reward_ratio
+                        self.risk_reward_ratio,
+                        self.symbol
                     )
 
         # IMPROVED: Reduced risk sizing (1% instead of 2%)
@@ -674,6 +694,10 @@ class MultiTimeframeTradingExecutor:
         self.open_trades.append(trade)
         self.executed_trades.append(trade)
         
+        # --- UPDATE STRUCTURE STATE AFTER SUCCESSFUL EXECUTION ---
+        self._last_major_event_type = signal.event_type
+        self._last_major_event_direction = signal.direction
+        
         return trade
     
     def execute_trade_point_in_time(self, 
@@ -694,6 +718,21 @@ class MultiTimeframeTradingExecutor:
         Returns:
             Executed trade or None if execution fails
         """
+        # --- HARD STRUCTURE LOCK (EXECUTION LEVEL) ---
+        # Rule: Only ONE CHOCH per structure leg. Must wait for BOS to unlock.
+        
+        # NOTE: signal.event_type is a string ("BOS" or "CHOCH"), so we compare with .value
+        if signal.event_type == EventType.CHOCH.value:
+            if (
+                self._last_major_event_type == "CHOCH"
+                and self._last_major_event_direction == signal.direction
+            ):
+                print(
+                    f"🔒 EXECUTION LOCK: {signal.direction} CHOCH rejected "
+                    f"(Waiting for BOS to unlock structure)"
+                )
+                return None
+
         # CRITICAL FIX: Get the actual entry price from 1M confirmation candle
         confirmation_candle = self._get_confirmation_candle_price(data_1m_current, signal.direction, signal.timestamp, current_time, signal.event_type)
         if confirmation_candle is None:
@@ -768,6 +807,10 @@ class MultiTimeframeTradingExecutor:
         # Add to open trades
         self.open_trades.append(trade)
         self.executed_trades.append(trade)
+        
+        # --- UPDATE STRUCTURE STATE AFTER SUCCESSFUL EXECUTION ---
+        self._last_major_event_type = signal.event_type
+        self._last_major_event_direction = signal.direction
         
         return trade
     
