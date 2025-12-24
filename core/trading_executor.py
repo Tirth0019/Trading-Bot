@@ -698,6 +698,11 @@ class MultiTimeframeTradingExecutor:
         self._last_major_event_type = signal.event_type
         self._last_major_event_direction = signal.direction
         
+        # Unlock structure on BOS (Reset state)
+        if signal.event_type == EventType.BOS.value:
+            self._last_major_event_type = None
+            self._last_major_event_direction = None
+        
         return trade
     
     def execute_trade_point_in_time(self, 
@@ -811,6 +816,11 @@ class MultiTimeframeTradingExecutor:
         # --- UPDATE STRUCTURE STATE AFTER SUCCESSFUL EXECUTION ---
         self._last_major_event_type = signal.event_type
         self._last_major_event_direction = signal.direction
+        
+        # Unlock structure on BOS (Reset state)
+        if signal.event_type == EventType.BOS.value:
+            self._last_major_event_type = None
+            self._last_major_event_direction = None
         
         return trade
     
