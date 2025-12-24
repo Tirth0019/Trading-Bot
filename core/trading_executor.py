@@ -90,6 +90,7 @@ class MultiTimeframeTradingExecutor:
         # --- HARD STRUCTURE LOCK STATE ---
         self._last_major_event_type: str | None = None     # "CHOCH" or "BOS"
         self._last_major_event_direction: str | None = None  # "Bullish" / "Bearish"
+        self._last_choch_level: float | None = None  # Track last CHOCH broken level for de-duplication
         
         # Initialize analyzers
         self.market_analyzer = MarketStructureAnalyzer(config={"confidence_thresholds": {"BOS": confidence_threshold, "CHOCH": confidence_threshold}})
@@ -120,6 +121,10 @@ class MultiTimeframeTradingExecutor:
         
         # DEBUG: Confirm executor persistence
         print("🧠 Executor initialized", id(self))
+        
+        # FINAL SAFEGUARD: Prevent accidental re-initialization
+        assert not hasattr(self, "_initialized"), "❌ CRITICAL ERROR: Executor re-initialized! Singleton pattern violated."
+        self._initialized = True
         
     def _select_trend_with_windows(self, df: pd.DataFrame, windows: List[int], swing_window: int) -> str:
         """
@@ -714,6 +719,7 @@ class MultiTimeframeTradingExecutor:
         if signal.event_type == EventType.BOS.value:
             self._last_major_event_type = None
             self._last_major_event_direction = None
+            self._last_choch_level = None  # Reset CHOCH level on BOS
         
         return trade
     
@@ -842,6 +848,7 @@ class MultiTimeframeTradingExecutor:
         if signal.event_type == EventType.BOS.value:
             self._last_major_event_type = None
             self._last_major_event_direction = None
+            self._last_choch_level = None  # Reset CHOCH level on BOS
         
         return trade
     
@@ -1314,6 +1321,16 @@ class MultiTimeframeTradingExecutor:
                     # Also skip if event is too old (> 2 days) to avoid performance degradation
                     if (current_timestamp - event.timestamp).total_seconds() > 172800:
                          continue
+                    
+                    # --- CHOCH DE-DUPLICATION BY BROKEN LEVEL ---
+                    # Prevent duplicate detections of the same structural break
+                    if event.event_type == EventType.CHOCH:
+                        last_level = getattr(self, "_last_choch_level", None)
+                        if last_level is not None and abs(last_level - event.price) < 0.0001:  # Same level (within 1 pip)
+                            print(f"   ⏭️  CHOCH de-duplicated (same level: {event.price:.5f})")
+                            continue
+                        self._last_choch_level = event.price
+                    
                     print(f"\n🎯 NEW {event.event_type.value} - {event.direction} entry at {current_timestamp}")
                     print(f"   Confidence: {event.confidence:.2f}")
                     print(f"   Price: {event.price:.5f}")

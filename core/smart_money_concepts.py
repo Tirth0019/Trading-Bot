@@ -65,6 +65,9 @@ class MarketStructureAnalyzer:
         self.choch_confidence_threshold = self.config["confidence_thresholds"]["CHOCH"]
         self.min_structure_width = self.config["structure_validation"]["min_structure_width"]
         self.min_time_width_hours = self.config["structure_validation"]["min_time_width_hours"]
+        
+        # STRUCTURE STATE LOCK: Prevent multiple CHOCH detections per structure leg
+        self._structure_state = None  # None, "CHOCH", or "BOS"
 
     def get_confidence_threshold(self, event_type: str) -> float:
         """Get confidence threshold for specific event type"""
@@ -425,78 +428,88 @@ class MarketStructureAnalyzer:
             # --- CHOCH Detection (Priority over BOS) ---
             choch_detected = False
             
-            # CORRECTED CHOCH detection - only true trend reversals
-            if trend_before == "uptrend":
-                # Bearish CHOCH: Must be a new LL breaking below previous HL
-                if current.swing_type == SwingType.LL:
-                    if last_hl and current.price < last_hl.price:
-                        # This is a true CHOCH - trend change from bullish to bearish
-                        
-                        # Prevent duplicate CHOCH on same structure
-                        if last_choch_level == last_hl.timestamp and last_choch_direction == "Bearish":
-                            choch_detected = True
-                            continue
-
-                        if last_hh:  # QML level
-                            confidence = self._calculate_confidence(current, last_hl, last_hh, EventType.CHOCH)
-                            quality_score = self._calculate_quality_score(current, last_hl, last_hh, EventType.CHOCH)
-                            dynamic_threshold = self._get_dynamic_choch_threshold(current, last_hl, trend_before)
-                            if confidence >= dynamic_threshold:  # Dynamic threshold for CHOCH
-                                events.append(MarketEvent(
-                                    event_type=EventType.CHOCH,
-                                    direction="Bearish",
-                                    timestamp=current.timestamp,
-                                    price=current.price,
-                                    confidence=confidence,
-                                    broken_level={"name": "SBR", "timestamp": last_hl.timestamp, "price": last_hl.price},
-                                    context={
-                                        "a_plus_entry": {"name": "QML", "timestamp": last_hh.timestamp, "price": last_hh.price},
-                                        "quality_score": quality_score,
-                                        "structure_width": abs(last_hh.price - last_hl.price)
-                                    },
-                                    description=f"Bearish CHOCH: {current.swing_type.value} @ {current.price:.2f} broke uptrend support @ {last_hl.price:.2f}"
-                                ))
-                                choch_detected = True
+            # 🔒 STRUCTURE STATE LOCK: Prevent CHOCH detection if already in CHOCH state
+            if self._structure_state == "CHOCH":
+                pass  # Skip CHOCH detection entirely - wait for BOS to reset
+            else:
+                # CORRECTED CHOCH detection - only true trend reversals
+                    if trend_before == "uptrend":
+                        # Bearish CHOCH: Must be a new LL breaking below previous HL
+                        if current.swing_type == SwingType.LL:
+                            if last_hl and current.price < last_hl.price:
+                                # This is a true CHOCH - trend change from bullish to bearish
                                 
-                                # Update Structure Lock
-                                last_choch_level = last_hl.timestamp
-                                last_choch_direction = "Bearish"
-            
-            elif trend_before == "downtrend":
-                # Bullish CHOCH: Must be a new HH breaking above previous LH
-                if current.swing_type == SwingType.HH:
-                    if last_lh and current.price > last_lh.price:
-                        # This is a true CHOCH - trend change from bearish to bullish
-                        
-                        # Prevent duplicate CHOCH on same structure
-                        if last_choch_level == last_lh.timestamp and last_choch_direction == "Bullish":
-                            choch_detected = True
-                            continue
-
-                        if last_ll:  # QML level
-                            confidence = self._calculate_confidence(current, last_lh, last_ll, EventType.CHOCH)
-                            quality_score = self._calculate_quality_score(current, last_lh, last_ll, EventType.CHOCH)
-                            dynamic_threshold = self._get_dynamic_choch_threshold(current, last_lh, trend_before)
-                            if confidence >= dynamic_threshold:  # Dynamic threshold for CHOCH
-                                events.append(MarketEvent(
-                                    event_type=EventType.CHOCH,
-                                    direction="Bullish",
-                                    timestamp=current.timestamp,
-                                    price=current.price,
-                                    confidence=confidence,
-                                    broken_level={"name": "RBS", "timestamp": last_lh.timestamp, "price": last_lh.price},
-                                    context={
-                                        "a_plus_entry": {"name": "QML", "timestamp": last_ll.timestamp, "price": last_ll.price},
-                                        "quality_score": quality_score,
-                                        "structure_width": abs(last_ll.price - last_lh.price)
-                                    },
-                                    description=f"Bullish CHOCH: {current.swing_type.value} @ {current.price:.2f} broke downtrend resistance @ {last_lh.price:.2f}"
-                                ))
-                                choch_detected = True
+                                # Prevent duplicate CHOCH on same structure
+                                if last_choch_level == last_hl.timestamp and last_choch_direction == "Bearish":
+                                    choch_detected = True
+                                    continue
                                 
-                                # Update Structure Lock
-                                last_choch_level = last_lh.timestamp
-                                last_choch_direction = "Bullish"
+                                if last_hh:  # QML level
+                                    confidence = self._calculate_confidence(current, last_hl, last_hh, EventType.CHOCH)
+                                    quality_score = self._calculate_quality_score(current, last_hl, last_hh, EventType.CHOCH)
+                                    dynamic_threshold = self._get_dynamic_choch_threshold(current, last_hl, trend_before)
+                                    if confidence >= dynamic_threshold:  # Dynamic threshold for CHOCH
+                                        events.append(MarketEvent(
+                                        event_type=EventType.CHOCH,
+                                        direction="Bearish",
+                                        timestamp=current.timestamp,
+                                        price=current.price,
+                                        confidence=confidence,
+                                        broken_level={"name": "SBR", "timestamp": last_hl.timestamp, "price": last_hl.price},
+                                        context={
+                                            "a_plus_entry": {"name": "QML", "timestamp": last_hh.timestamp, "price": last_hh.price},
+                                            "quality_score": quality_score,
+                                            "structure_width": abs(last_hh.price - last_hl.price)
+                                        },
+                                        description=f"Bearish CHOCH: {current.swing_type.value} @ {current.price:.2f} broke uptrend support @ {last_hl.price:.2f}"
+                                    ))
+                                    choch_detected = True
+                                    
+                                    # Update Structure Lock
+                                    last_choch_level = last_hl.timestamp
+                                    last_choch_direction = "Bearish"
+                                    
+                                    # 🔒 LOCK STRUCTURE AFTER CHOCH
+                                    self._structure_state = "CHOCH"
+                
+                    elif trend_before == "downtrend":
+                        # Bullish CHOCH: Must be a new HH breaking above previous LH
+                        if current.swing_type == SwingType.HH:
+                            if last_lh and current.price > last_lh.price:
+                                # This is a true CHOCH - trend change from bearish to bullish
+                                
+                                # Prevent duplicate CHOCH on same structure
+                                if last_choch_level == last_lh.timestamp and last_choch_direction == "Bullish":
+                                    choch_detected = True
+                                    continue
+
+                                if last_ll:  # QML level
+                                    confidence = self._calculate_confidence(current, last_lh, last_ll, EventType.CHOCH)
+                                    quality_score = self._calculate_quality_score(current, last_lh, last_ll, EventType.CHOCH)
+                                    dynamic_threshold = self._get_dynamic_choch_threshold(current, last_lh, trend_before)
+                                    if confidence >= dynamic_threshold:  # Dynamic threshold for CHOCH
+                                        events.append(MarketEvent(
+                                            event_type=EventType.CHOCH,
+                                            direction="Bullish",
+                                            timestamp=current.timestamp,
+                                            price=current.price,
+                                            confidence=confidence,
+                                            broken_level={"name": "RBS", "timestamp": last_lh.timestamp, "price": last_lh.price},
+                                            context={
+                                                "a_plus_entry": {"name": "QML", "timestamp": last_ll.timestamp, "price": last_ll.price},
+                                                "quality_score": quality_score,
+                                                "structure_width": abs(last_ll.price - last_lh.price)
+                                            },
+                                            description=f"Bullish CHOCH: {current.swing_type.value} @ {current.price:.2f} broke downtrend resistance @ {last_lh.price:.2f}"
+                                        ))
+                                        choch_detected = True
+                                        
+                                        # Update Structure Lock
+                                        last_choch_level = last_lh.timestamp
+                                        last_choch_direction = "Bullish"
+                                        
+                                        # 🔒 LOCK STRUCTURE AFTER CHOCH
+                                        self._structure_state = "CHOCH"
 
             # --- OPTIMIZED BOS Detection (Only if no CHOCH detected) ---
             if not choch_detected and current.swing_type == SwingType.HH:
@@ -525,6 +538,9 @@ class MarketStructureAnalyzer:
                                 },
                                 description=f"Bullish BOS: HH @ {current.price:.2f} broke previous HH @ {prev_hh.price:.2f}"
                             ))
+                            
+                            # 🔓 RESET STRUCTURE STATE ON BOS
+                            self._structure_state = None
 
             elif not choch_detected and current.swing_type == SwingType.LL:
                 # Look for previous LL to break
@@ -552,6 +568,9 @@ class MarketStructureAnalyzer:
                                 },
                                 description=f"Bearish BOS: LL @ {current.price:.2f} broke previous LL @ {prev_ll.price:.2f}"
                             ))
+                            
+                            # 🔓 RESET STRUCTURE STATE ON BOS
+                            self._structure_state = None
 
         # Return all events - let trading_executor handle duplicate filtering and decision-making
         return events
