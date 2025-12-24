@@ -70,11 +70,13 @@ class TradingBot:
         )
         
         # Initialize backtester
+        # Initialize backtester
         self.backtester = IntegratedBacktester(
             symbol=self.symbol,
             risk_per_trade=risk_per_trade,
             confidence_threshold=confidence_threshold,
-            atr_multiplier=atr_multiplier
+            atr_multiplier=atr_multiplier,
+            executor=self.executor
         )
     
     def run_backtest(self, 
@@ -268,7 +270,8 @@ class TradingBot:
             symbol=self.symbol,
             risk_per_trade=self.risk_per_trade,
             confidence_threshold=self.confidence_threshold,
-            atr_multiplier=self.atr_multiplier
+            atr_multiplier=self.atr_multiplier,
+            executor=self.executor
         )
 
 

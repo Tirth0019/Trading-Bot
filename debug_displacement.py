@@ -44,23 +44,21 @@ def run_debug_displacement():
             if line_count % 50 == 0:
                 print(".", end="", flush=True)
 
-            # Check for start of block
-            if "🔍 CHOCH @" in line:
+            # Check for start of block or key debug messages
+            if "🔍 CHOCH @" in line or "🧠 Executor initialized" in line or "LOCK CHECK" in line or "🔒 EXECUTION LOCK" in line:
                 if line_count >= 50: print() # Newline if we were printing dots
                 capture_mode = True
                 print(line.strip())
                 continue
                 
             if capture_mode:
-                if "ATR_1M:" in line or "Displacement:" in line or "Result:" in line:
+                if "ATR_1M:" in line or "Displacement:" in line or "Result:" in line or "CHOCH" in line:
                     print(line.strip())
-                    if "Result:" in line:
+                    if "Result:" in line or "LOCK:" in line: # End of block markers
                         print("----------------------------------------------------------------")
                         capture_mode = False # Reset after result
                 else:
-                    # If we hit something else, maybe end capture? 
-                    # But usually the block is contiguous.
-                    # Just generic print if it looks like part of the block (indented)
+                    # Generic indented check
                     if line.startswith("   "):
                         print(line.strip())
                     else:

@@ -118,6 +118,9 @@ class MultiTimeframeTradingExecutor:
             'processed_candles': 0
         }
         
+        # DEBUG: Confirm executor persistence
+        print("🧠 Executor initialized", id(self))
+        
     def _select_trend_with_windows(self, df: pd.DataFrame, windows: List[int], swing_window: int) -> str:
         """
         Backward-compatible wrapper: returns only trend direction.
@@ -630,6 +633,15 @@ class MultiTimeframeTradingExecutor:
         
         # NOTE: signal.event_type is a string ("BOS" or "CHOCH"), so we compare with .value
         if signal.event_type == EventType.CHOCH.value:
+            # DEBUG: Verify Lock State
+            print(
+                "LOCK CHECK",
+                signal.event_type,
+                signal.direction,
+                self._last_major_event_type,
+                self._last_major_event_direction
+            )
+            
             if (
                 self._last_major_event_type == "CHOCH"
                 and self._last_major_event_direction == signal.direction
@@ -728,6 +740,15 @@ class MultiTimeframeTradingExecutor:
         
         # NOTE: signal.event_type is a string ("BOS" or "CHOCH"), so we compare with .value
         if signal.event_type == EventType.CHOCH.value:
+            # DEBUG: Verify Lock State
+            print(
+                "LOCK CHECK",
+                signal.event_type,
+                signal.direction,
+                self._last_major_event_type,
+                self._last_major_event_direction
+            )
+
             if (
                 self._last_major_event_type == "CHOCH"
                 and self._last_major_event_direction == signal.direction

@@ -24,7 +24,8 @@ class IntegratedBacktester:
                  risk_per_trade: float = 0.01,
                  confidence_threshold: float = 0.6,
                  atr_multiplier: float = 2.5,
-                 days_back: int = 60):
+                 days_back: int = 60,
+                 executor: MultiTimeframeTradingExecutor = None):  # NEW ARGUMENT
         
         self.symbol = symbol
         self.risk_per_trade = risk_per_trade
@@ -33,13 +34,18 @@ class IntegratedBacktester:
         self.days_back = days_back
         
         # Initialize the sophisticated trading executor
-        self.executor = MultiTimeframeTradingExecutor(
-            symbol=symbol,
-            risk_per_trade=risk_per_trade,
-            confidence_threshold=confidence_threshold,
-            atr_multiplier=atr_multiplier,
-            risk_reward_ratio=2.0
-        )
+        if executor is not None:
+             # Use the provided executor (Shared Instance)
+             self.executor = executor
+        else:
+            # Fallback (Legacy)
+            self.executor = MultiTimeframeTradingExecutor(
+                symbol=symbol,
+                risk_per_trade=risk_per_trade,
+                confidence_threshold=confidence_threshold,
+                atr_multiplier=atr_multiplier,
+                risk_reward_ratio=2.0
+            )
         
         # Store prominence factor for structure building
         self.prominence_factor = 1.5  # Much lower than default 7.5
