@@ -92,6 +92,10 @@ class MultiTimeframeTradingExecutor:
         self._last_major_event_direction: str | None = None  # "Bullish" / "Bearish"
         self._last_choch_level: float | None = None  # Track last CHOCH broken level for de-duplication
         
+        # --- CHOCH-BOS CONFIRMATION STATE (Institutional Filter) ---
+        self._last_choch_direction: str | None = None  # Direction of last CHOCH
+        self._bos_confirmed_after_choch: bool = False  # True only after BOS confirms CHOCH direction
+        
         # Initialize analyzers
         self.market_analyzer = MarketStructureAnalyzer(config={"confidence_thresholds": {"BOS": confidence_threshold, "CHOCH": confidence_threshold}})
         self.risk_manager = RiskManager(risk_per_trade=risk_per_trade,
@@ -656,6 +660,15 @@ class MultiTimeframeTradingExecutor:
                     f"(Waiting for BOS to unlock structure)"
                 )
                 return None
+            
+            # --- INSTITUTIONAL FILTER: CHOCH-BOS CONFIRMATION ---
+            # Rule: Only trade CHOCH after BOS confirms the new direction
+            if not self._bos_confirmed_after_choch:
+                print(
+                    f"⏸️  CHOCH-BOS FILTER: {signal.direction} CHOCH rejected "
+                    f"(Waiting for BOS to confirm CHOCH direction)"
+                )
+                return None
 
         # Wait for 1M confirmation
         if not self.confirm_1m_signal(data_1m, signal.direction, signal.timestamp, signal.event_type):
@@ -720,6 +733,17 @@ class MultiTimeframeTradingExecutor:
             self._last_major_event_type = None
             self._last_major_event_direction = None
             self._last_choch_level = None  # Reset CHOCH level on BOS
+            
+            # --- CHOCH-BOS CONFIRMATION: BOS confirms CHOCH direction ---
+            if self._last_choch_direction == signal.direction:
+                self._bos_confirmed_after_choch = True
+                print(f"✅ BOS confirmed CHOCH direction ({signal.direction}) - CHOCH trades now allowed")
+        
+        # Track CHOCH for BOS confirmation requirement
+        if signal.event_type == EventType.CHOCH.value:
+            self._last_choch_direction = signal.direction
+            self._bos_confirmed_after_choch = False  # Reset - need new BOS to confirm
+            print(f"🎯 CHOCH detected ({signal.direction}) - Waiting for BOS confirmation")
         
         return trade
     
@@ -762,6 +786,15 @@ class MultiTimeframeTradingExecutor:
                 print(
                     f"🔒 EXECUTION LOCK: {signal.direction} CHOCH rejected "
                     f"(Waiting for BOS to unlock structure)"
+                )
+                return None
+            
+            # --- INSTITUTIONAL FILTER: CHOCH-BOS CONFIRMATION ---
+            # Rule: Only trade CHOCH after BOS confirms the new direction
+            if not self._bos_confirmed_after_choch:
+                print(
+                    f"⏸️  CHOCH-BOS FILTER: {signal.direction} CHOCH rejected "
+                    f"(Waiting for BOS to confirm CHOCH direction)"
                 )
                 return None
 
@@ -849,6 +882,17 @@ class MultiTimeframeTradingExecutor:
             self._last_major_event_type = None
             self._last_major_event_direction = None
             self._last_choch_level = None  # Reset CHOCH level on BOS
+            
+            # --- CHOCH-BOS CONFIRMATION: BOS confirms CHOCH direction ---
+            if self._last_choch_direction == signal.direction:
+                self._bos_confirmed_after_choch = True
+                print(f"✅ BOS confirmed CHOCH direction ({signal.direction}) - CHOCH trades now allowed")
+        
+        # Track CHOCH for BOS confirmation requirement
+        if signal.event_type == EventType.CHOCH.value:
+            self._last_choch_direction = signal.direction
+            self._bos_confirmed_after_choch = False  # Reset - need new BOS to confirm
+            print(f"🎯 CHOCH detected ({signal.direction}) - Waiting for BOS confirmation")
         
         return trade
     
