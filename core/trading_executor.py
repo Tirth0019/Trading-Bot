@@ -984,15 +984,30 @@ class MultiTimeframeTradingExecutor:
                         
                     displacement = max_move / atr_1m
                     
+                    displacement = max_move / atr_1m
+                    
                     # LOGGING as requested
-                    print(f"🔍 CHOCH @ {entry_time} | Dir: {signal_direction}")
-                    print(f"   ATR_1M: {atr_1m:.5f} | MaxMove: {max_move:.5f}")
-                    print(f"   Displacement: {displacement:.2f} (Req: 0.6)")
+                    log_msg = [
+                        f"🔍 CHOCH @ {entry_time} | Dir: {signal_direction}",
+                        f"   ATR_1M: {atr_1m:.5f} | MaxMove: {max_move:.5f}",
+                        f"   Displacement: {displacement:.2f} (Req: 0.6)"
+                    ]
+                    
+                    # Write to file directly to bypass stdout issues
+                    try:
+                        with open("choch_debug.log", "a", encoding="utf-8") as f:
+                            for msg in log_msg:
+                                f.write(msg + "\n")
+                                print(msg) # Still print for console users
+                    except Exception:
+                        pass # Ignore file write errors
                     
                     if displacement >= 0.6:
                          print("   Result: PASS ✅")
+                         with open("choch_debug.log", "a", encoding="utf-8") as f: f.write("   Result: PASS ✅\n")
                     else:
                          print("   Result: FAIL ❌")
+                         with open("choch_debug.log", "a", encoding="utf-8") as f: f.write("   Result: FAIL ❌\n")
                          return False # Enforce filter
         
         # Direction confirmation
