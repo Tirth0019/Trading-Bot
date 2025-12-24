@@ -267,10 +267,8 @@ class MultiTimeframeTradingExecutor:
             if event.confidence >= self.confidence_threshold:
                 # Check trend alignment (1H + 15M trends must match)
                 if self._is_trend_aligned_enhanced(event, trend_1h, data_15m):
-                    # Need to check retracement confirmation carefully using point-in-time logic
-                    # Pass trend_1h for asymmetry logic
-                    if self.check_retracement_confirmation_point_in_time(event, data_15m, data_15m.index[-1], trend_1h=trend_1h):
-                        a_plus_events.append(event)
+                    # NOTE: Retracement confirmation is now done separately in point-in-time processing
+                    a_plus_events.append(event)
         
         # Track aligned events for stats
         if hasattr(self, 'stats'):
@@ -281,8 +279,7 @@ class MultiTimeframeTradingExecutor:
     def check_retracement_confirmation_point_in_time(self, 
                                                    event: MarketEvent, 
                                                    data_15m_current: pd.DataFrame,
-                                                   current_time: pd.Timestamp,
-                                                   trend_1h: str = "sideways") -> bool:
+                                                   current_time: pd.Timestamp) -> bool:
         """
         Check retracement confirmation with point-in-time data only (NO LOOK-AHEAD BIAS)
         
@@ -290,7 +287,6 @@ class MultiTimeframeTradingExecutor:
             event: Market event to check
             data_15m_current: 15M data up to current time only
             current_time: Current timestamp
-            trend_1h: 1H trend context for asymmetry checks
             
         Returns:
             True if retracement confirmation is valid, False otherwise
@@ -311,7 +307,6 @@ class MultiTimeframeTradingExecutor:
         # 1️⃣ Normalize event type (Must use event.event_type as observed in codebase)
         event_type_str = str(event.event_type).lower()
         is_bos = "bos" in event_type_str
-        is_choch = "choch" in event_type_str
 
         if is_bos:
             trend_strength_1h = getattr(self, "_last_trend_strength_1h", 1.0)
@@ -320,6 +315,7 @@ class MultiTimeframeTradingExecutor:
             if trend_strength_1h > 0.6 and event.confidence >= 0.6:
                 return True
 
+
         
         # Get ATR for tolerance calculation using RiskManager
         atr_series = self.risk_manager.calculate_atr(data_15m_current)
@@ -327,24 +323,7 @@ class MultiTimeframeTradingExecutor:
             return False
         
         current_atr = atr_series.iloc[-1]
-        
-        # --- CHOCH ASYMMETRY: RETRACEMENT TOLERANCE ---
-        # Counter-trend CHOCH requires tighter retracement (deeper pullback)
-        # With-trend CHOCH uses standard tolerance
-        tolerance_multiplier = 1.2
-        
-        if is_choch:
-            counter_trend = False
-            if trend_1h == "uptrend" and event.direction == "Bearish":
-                counter_trend = True
-            elif trend_1h == "downtrend" and event.direction == "Bullish":
-                counter_trend = True
-            
-            if counter_trend:
-                tolerance_multiplier = 0.8  # Tighter tolerance for counter-trend
-                # print(f"🔍 Checking CT CHOCH Retracement with tighter tolerance ({tolerance_multiplier*current_atr:.4f})")
-        
-        tolerance = current_atr * tolerance_multiplier
+        tolerance = current_atr * 1.2  # Increased from 0.5 to 1.2 ATR tolerance (REALISTIC)
         
         # Get recent price data after the event but before current time
         event_time = event.timestamp
@@ -661,29 +640,6 @@ class MultiTimeframeTradingExecutor:
                 )
                 return None
 
-        # --- CHOCH ASYMMETRY CLASSIFICATION ---
-        is_choch = signal.event_type == EventType.CHOCH.value
-        
-        with_trend_choch = False
-        counter_trend_choch = False
-        
-        if is_choch:
-            # 1H trend is stored in signal.timeframe_1h_trend
-            trend_1h = signal.timeframe_1h_trend
-            
-            if trend_1h == "uptrend" and signal.direction == "BUY":
-                with_trend_choch = True
-            elif trend_1h == "downtrend" and signal.direction == "SELL":
-                with_trend_choch = True
-            else:
-                counter_trend_choch = True
-                
-        # --- COUNTER-TREND CHOCH STRICTNESS ---
-        if counter_trend_choch:
-            if signal.confidence < 0.70:
-                print(f"❌ Counter-trend CHOCH rejected (low confidence: {signal.confidence:.2f} < 0.70)")
-                return None
-
         # Wait for 1M confirmation
         if not self.confirm_1m_signal(data_1m, signal.direction, signal.timestamp, signal.event_type):
             return None
@@ -775,29 +731,6 @@ class MultiTimeframeTradingExecutor:
                     f"🔒 EXECUTION LOCK: {signal.direction} CHOCH rejected "
                     f"(Waiting for BOS to unlock structure)"
                 )
-                return None
-
-        # --- CHOCH ASYMMETRY CLASSIFICATION ---
-        is_choch = signal.event_type == EventType.CHOCH.value
-        
-        with_trend_choch = False
-        counter_trend_choch = False
-        
-        if is_choch:
-            # 1H trend is stored in signal.timeframe_1h_trend
-            trend_1h = signal.timeframe_1h_trend
-            
-            if trend_1h == "uptrend" and signal.direction == "BUY":
-                with_trend_choch = True
-            elif trend_1h == "downtrend" and signal.direction == "SELL":
-                with_trend_choch = True
-            else:
-                counter_trend_choch = True
-                
-        # --- COUNTER-TREND CHOCH STRICTNESS ---
-        if counter_trend_choch:
-            if signal.confidence < 0.70:
-                print(f"❌ Counter-trend CHOCH rejected (low confidence: {signal.confidence:.2f} < 0.70)")
                 return None
 
         # CRITICAL FIX: Get the actual entry price from 1M confirmation candle
@@ -1007,6 +940,60 @@ class MultiTimeframeTradingExecutor:
             recent_volume = data_1m_current['Volume'].tail(20).mean()
             volume_ratio = next_candle['Volume'] / recent_volume if recent_volume > 0 else 1
             volume_confirmation = volume_ratio >= 1.1
+
+        # --- 1M DISPLACEMENT FILTER (CHOCH ONLY) ---
+        if event_type == "CHOCH":
+            # RE-INTRODUCED: 1M Displacement Logic
+            # Lookahead 8 minutes (candles) to measure momentum
+            
+            # Using data_1m_current: We need candles strictly AFTER the entry time.
+            # But point-in-time constraints mean we might not have all 8 candles yet if current_time is close to entry.
+            # However, logic dictates we should check what we have or wait? 
+            # Given instructions: "validate_choch_displacement ... if >= 0.6"
+            
+            # Get candles after entry
+            post_entry_candles = data_1m_current[data_1m_current.index > entry_time]
+            lookahead_limit = 8
+            
+            # If we don't have enough data yet, we might want to wait, or check what we have.
+            # Assuming we check what is available up to current_time (point-in-time correctness).
+            lookahead = post_entry_candles.iloc[:lookahead_limit] # Up to 8 candles
+            
+            # Only proceed if we have at least 1-2 candles to measure SOMETHING
+            if not lookahead.empty:
+                # Calculate ATR on 1M
+                atr_1m_series = self.risk_manager.calculate_atr(data_1m_current)
+                atr_1m = atr_1m_series.iloc[-1] if (atr_1m_series is not None and not atr_1m_series.empty) else 0.0
+                
+                if atr_1m > 0:
+                    max_move = 0.0
+                    entry_price_ref = next_candle['Open'] # Or use the signal price if available? 
+                    # The function signature has no price, but we have next_candle (the confirmation candle).
+                    # Better to use the Open of the first confirmation candle as proxy for "CHOCH Price" level 
+                    # or better yet, simply measure from the start of the move. 
+                    # User pseudo-code: "choch_price". 
+                    # Let's use the first available candle Open or Close.
+                    ref_price = next_candle['Open'] 
+                    
+                    if signal_direction == "BUY" or signal_direction == "Bullish":
+                        max_high = lookahead["High"].max()
+                        max_move = max_high - ref_price
+                    else:
+                        min_low = lookahead["Low"].min()
+                        max_move = ref_price - min_low
+                        
+                    displacement = max_move / atr_1m
+                    
+                    # LOGGING as requested
+                    print(f"🔍 CHOCH @ {entry_time} | Dir: {signal_direction}")
+                    print(f"   ATR_1M: {atr_1m:.5f} | MaxMove: {max_move:.5f}")
+                    print(f"   Displacement: {displacement:.2f} (Req: 0.6)")
+                    
+                    if displacement >= 0.6:
+                         print("   Result: PASS ✅")
+                    else:
+                         print("   Result: FAIL ❌")
+                         return False # Enforce filter
         
         # Direction confirmation
         is_green = next_candle['Close'] > next_candle['Open']
