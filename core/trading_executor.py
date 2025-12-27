@@ -108,6 +108,9 @@ class MultiTimeframeTradingExecutor:
         self.open_trades: List[TradeExecution] = []
         self._resampled_data: Optional[Dict[str, pd.DataFrame]] = None
         
+        # Detailed trade logging for analysis
+        self.detailed_trade_logs: List[Dict] = []  # Comprehensive metrics per trade
+        
         # Caching for performance optimization
         self._trend_cache: Dict[str, str] = {}  # Cache for 1H trends
         self._trend_cache_15m: Dict[str, str] = {}  # Cache for 15M trends
@@ -124,7 +127,7 @@ class MultiTimeframeTradingExecutor:
         }
         
         # DEBUG: Confirm executor persistence
-        print("🧠 Executor initialized", id(self))
+        print("Executor initialized", id(self))
         
         # FINAL SAFEGUARD: Prevent accidental re-initialization
         assert not hasattr(self, "_initialized"), "❌ CRITICAL ERROR: Executor re-initialized! Singleton pattern violated."
@@ -656,7 +659,7 @@ class MultiTimeframeTradingExecutor:
                 and self._last_major_event_direction == signal.direction
             ):
                 print(
-                    f"🔒 EXECUTION LOCK: {signal.direction} CHOCH rejected "
+                    f" EXECUTION LOCK: {signal.direction} CHOCH rejected "
                     f"(Waiting for BOS to unlock structure)"
                 )
                 return None
@@ -665,7 +668,7 @@ class MultiTimeframeTradingExecutor:
             # Rule: Only trade CHOCH after BOS confirms the new direction
             if not self._bos_confirmed_after_choch:
                 print(
-                    f"⏸️  CHOCH-BOS FILTER: {signal.direction} CHOCH rejected "
+                    f"  CHOCH-BOS FILTER: {signal.direction} CHOCH rejected "
                     f"(Waiting for BOS to confirm CHOCH direction)"
                 )
                 return None
@@ -737,13 +740,13 @@ class MultiTimeframeTradingExecutor:
             # --- CHOCH-BOS CONFIRMATION: BOS confirms CHOCH direction ---
             if self._last_choch_direction == signal.direction:
                 self._bos_confirmed_after_choch = True
-                print(f"✅ BOS confirmed CHOCH direction ({signal.direction}) - CHOCH trades now allowed")
+                print(f"BOS confirmed CHOCH direction ({signal.direction}) - CHOCH trades now allowed")
         
         # Track CHOCH for BOS confirmation requirement
         if signal.event_type == EventType.CHOCH.value:
             self._last_choch_direction = signal.direction
             self._bos_confirmed_after_choch = False  # Reset - need new BOS to confirm
-            print(f"🎯 CHOCH detected ({signal.direction}) - Waiting for BOS confirmation")
+            print(f"CHOCH detected ({signal.direction}) - Waiting for BOS confirmation")
         
         return trade
     
@@ -784,7 +787,7 @@ class MultiTimeframeTradingExecutor:
                 and self._last_major_event_direction == signal.direction
             ):
                 print(
-                    f"🔒 EXECUTION LOCK: {signal.direction} CHOCH rejected "
+                    f" EXECUTION LOCK: {signal.direction} CHOCH rejected "
                     f"(Waiting for BOS to unlock structure)"
                 )
                 return None
@@ -793,7 +796,7 @@ class MultiTimeframeTradingExecutor:
             # Rule: Only trade CHOCH after BOS confirms the new direction
             if not self._bos_confirmed_after_choch:
                 print(
-                    f"⏸️  CHOCH-BOS FILTER: {signal.direction} CHOCH rejected "
+                    f"  CHOCH-BOS FILTER: {signal.direction} CHOCH rejected "
                     f"(Waiting for BOS to confirm CHOCH direction)"
                 )
                 return None
@@ -886,13 +889,13 @@ class MultiTimeframeTradingExecutor:
             # --- CHOCH-BOS CONFIRMATION: BOS confirms CHOCH direction ---
             if self._last_choch_direction == signal.direction:
                 self._bos_confirmed_after_choch = True
-                print(f"✅ BOS confirmed CHOCH direction ({signal.direction}) - CHOCH trades now allowed")
+                print(f"BOS confirmed CHOCH direction ({signal.direction}) - CHOCH trades now allowed")
         
         # Track CHOCH for BOS confirmation requirement
         if signal.event_type == EventType.CHOCH.value:
             self._last_choch_direction = signal.direction
             self._bos_confirmed_after_choch = False  # Reset - need new BOS to confirm
-            print(f"🎯 CHOCH detected ({signal.direction}) - Waiting for BOS confirmation")
+            print(f"CHOCH detected ({signal.direction}) - Waiting for BOS confirmation")
         
         return trade
     
@@ -1124,41 +1127,41 @@ class MultiTimeframeTradingExecutor:
             if signal_direction == "BUY":
                 is_momentum = is_green and (body_ratio >= 0.3 or volume_confirmation)
                 if has_micro_bos:
-                    print(f"✅ 1M CONFIRM (CHOCH): micro BOS - {next_candle.name}")
+                    print(f"OK 1M CONFIRM (CHOCH): micro BOS - {next_candle.name}")
                     return True
                 elif is_momentum:
-                    print(f"✅ 1M CONFIRM (CHOCH): micro momentum - {next_candle.name}")
+                    print(f"OK 1M CONFIRM (CHOCH): micro momentum - {next_candle.name}")
                     return True
                 else:
-                    print(f"❌ 1M REJECT (CHOCH) - {next_candle.name}")
+                    print(f"REJECT 1M REJECT (CHOCH) - {next_candle.name}")
                     return False
             elif signal_direction == "SELL":
                 is_momentum = is_red and (body_ratio >= 0.3 or volume_confirmation)
                 if has_micro_bos:
-                    print(f"✅ 1M CONFIRM (CHOCH): micro BOS - {next_candle.name}")
+                    print(f"OK 1M CONFIRM (CHOCH): micro BOS - {next_candle.name}")
                     return True
                 elif is_momentum:
-                    print(f"✅ 1M CONFIRM (CHOCH): micro momentum - {next_candle.name}")
+                    print(f"OK 1M CONFIRM (CHOCH): micro momentum - {next_candle.name}")
                     return True
                 else:
-                    print(f"❌ 1M REJECT (CHOCH) - {next_candle.name}")
+                    print(f"REJECT 1M REJECT (CHOCH) - {next_candle.name}")
                     return False
 
         # BOS Logic: Require Micro BOS (Structure)
         else: # BOS or others
             if signal_direction == "BUY":
                 if has_micro_bos:
-                    print(f"✅ 1M CONFIRM (BOS): micro BOS - {next_candle.name}")
+                    print(f"OK 1M CONFIRM (BOS): micro BOS - {next_candle.name}")
                     return True
                 else:
-                    print(f"❌ 1M REJECT (BOS): no BOS - {next_candle.name}")
+                    print(f"REJECT 1M REJECT (BOS): no BOS - {next_candle.name}")
                     return False
             elif signal_direction == "SELL":
                 if has_micro_bos:
-                    print(f"✅ 1M CONFIRM (BOS): micro BOS - {next_candle.name}")
+                    print(f"OK 1M CONFIRM (BOS): micro BOS - {next_candle.name}")
                     return True
                 else:
-                    print(f"❌ 1M REJECT (BOS): no BOS - {next_candle.name}")
+                    print(f"REJECT 1M REJECT (BOS): no BOS - {next_candle.name}")
                     return False
 
         return False
@@ -1271,12 +1274,12 @@ class MultiTimeframeTradingExecutor:
         Returns:
             Strategy results and statistics
         """
-        print(f"🚀 Starting PROPER Multi-Timeframe Trading Strategy for {self.symbol}")
-        print(f"📊 Analyzing {days_back} days of data")
-        print("⚠️  PROPER BACKTESTING: Candle-by-candle simulation")
+        print(f"Starting PROPER Multi-Timeframe Trading Strategy for {self.symbol}")
+        print(f"Analyzing {days_back} days of data")
+        print("PROPER BACKTESTING: Candle-by-candle simulation")
         
         # Load and resample data
-        print("📈 Loading and resampling data...")
+        print("Loading and resampling data...")
         resampled_data = load_and_resample(data_file, days_back=days_back)
         self._resampled_data = resampled_data
         
@@ -1305,15 +1308,15 @@ class MultiTimeframeTradingExecutor:
         data_1m = resampled_data.get('1M')
         
         if data_1h is None or data_15m is None or data_1m is None:
-            print("❌ Missing required timeframe data")
+            print(" Missing required timeframe data")
             return results
         
         # PROPER BACKTESTING: Get min/max timestamps for backtesting
         start_time = max(data_1h.index[0], data_15m.index[0], data_1m.index[0])
         end_time = min(data_1h.index[-1], data_15m.index[-1], data_1m.index[-1])
         
-        print(f"🔄 Backtesting from {start_time} to {end_time}")
-        print("📊 Processing 15M candles (entry timeframe) candle-by-candle...")
+        print(f" Backtesting from {start_time} to {end_time}")
+        print(" Processing 15M candles (entry timeframe) candle-by-candle...")
         
         # OPTIMIZATION: Pre-compute 1H trend for each timestamp to avoid repeated calculations
         # We'll update trend only when we have enough new data
@@ -1371,30 +1374,30 @@ class MultiTimeframeTradingExecutor:
                     if event.event_type == EventType.CHOCH:
                         last_level = getattr(self, "_last_choch_level", None)
                         if last_level is not None and abs(last_level - event.price) < 0.0001:  # Same level (within 1 pip)
-                            print(f"   ⏭️  CHOCH de-duplicated (same level: {event.price:.5f})")
+                            print(f"     CHOCH de-duplicated (same level: {event.price:.5f})")
                             continue
                         self._last_choch_level = event.price
                     
-                    print(f"\n🎯 NEW {event.event_type.value} - {event.direction} entry at {current_timestamp}")
+                    print(f"\n NEW {event.event_type.value} - {event.direction} entry at {current_timestamp}")
                     print(f"   Confidence: {event.confidence:.2f}")
                     print(f"   Price: {event.price:.5f}")
                     
                     # STEP 3: Check retracement confirmation with historical data only
                     if self.check_retracement_confirmation_point_in_time(event, current_15m_data, current_timestamp):
-                        print("   ✅ Retracement confirmation passed")
+                        print("    Retracement confirmation passed")
                         self.stats['retracement_events'] += 1
                         
                         # STEP 4: Generate trade signal (entry price will be determined at execution)
                         signal = self.generate_trade_signal(event, trend_1h, current_candle['Close'])
                         
                         if signal is None:
-                            print("   ❌ Failed to generate trade signal")
+                            print("    Failed to generate trade signal")
                             continue
                         
                         results['signals_generated'] += 1
                         self.signals.append(signal)
                         
-                        print(f"   ✅ Signal generated: {signal.direction} (entry price will be determined at execution)")
+                        print(f"    Signal generated: {signal.direction} (entry price will be determined at execution)")
                         
                         # STEP 5: Execute trade with historical 1M data only
                         trade = self.execute_trade_point_in_time(signal, 10000, hist_1m, current_timestamp)
@@ -1402,11 +1405,11 @@ class MultiTimeframeTradingExecutor:
                         if trade:
                             results['trades_executed'] += 1
                             self.stats['confirmed_1m_events'] += 1
-                            print(f"   🚀 Trade executed: {trade.position_size:.2f} units")
+                            print(f"    Trade executed: {trade.position_size:.2f} units")
                         else:
-                            print("   ⏳ Waiting for 1M confirmation...")
+                            print("    Waiting for 1M confirmation...")
                     else:
-                        print("   ⏳ Waiting for retracement confirmation...")
+                        print("    Waiting for retracement confirmation...")
             
             # STEP 6: Monitor open trades with current price from the loop
             current_1m_data = data_1m.loc[data_1m.index <= current_timestamp]
@@ -1424,8 +1427,8 @@ class MultiTimeframeTradingExecutor:
                         results['losing_trades'] += 1
         
         # Print final results
-        print(f"\n🎉 PROPER BACKTESTING COMPLETE!")
-        print(f"📊 Results Summary:")
+        print(f"\n PROPER BACKTESTING COMPLETE!")
+        print(f" Results Summary:")
         print(f"   Signals Generated: {results['signals_generated']}")
         print(f"   Trades Executed: {results['trades_executed']}")
         print(f"   Trades Closed: {results['trades_closed']}")
@@ -1449,7 +1452,7 @@ class MultiTimeframeTradingExecutor:
             avg_r = total_r / results['trades_closed']
             print(f"   Avg R: {avg_r:.2f}R")
             
-        print("\n📊 Detailed Funnel Metrics:")
+        print("\nDetailed Funnel Metrics:")
         print(f"   1. Total Events: {self.stats['total_events']}")
         print(f"   2. Events Passing Alignment: {self.stats['aligned_events']}")
         print(f"   3. Events After Retracement: {self.stats['retracement_events']}")

@@ -53,18 +53,18 @@ class IntegratedBacktester:
     def run_backtest(self, data_file: str):
         """Run backtest using the sophisticated strategy"""
         
-        print(f"🚀 Starting Integrated Backtester for {self.symbol}")
-        print(f"📊 Using sophisticated MultiTimeframeTradingExecutor")
-        print(f"📅 Analyzing last {self.days_back} days")
+        print(f" Starting Integrated Backtester for {self.symbol}")
+        print(f" Using sophisticated MultiTimeframeTradingExecutor")
+        print(f" Analyzing last {self.days_back} days")
         print("=" * 60)
         
         # Verify data file exists
         if not os.path.exists(data_file):
-            print(f"❌ Data file not found: {data_file}")
+            print(f" Data file not found: {data_file}")
             return None
         
-        print(f"📈 Data file: {data_file}")
-        print("\n📋 Configuration:")
+        print(f" Data file: {data_file}")
+        print("\n Configuration:")
         print(f"   Symbol: {self.symbol}")
         print(f"   Risk per trade: {self.risk_per_trade:.1%}")
         print(f"   Confidence threshold: {self.confidence_threshold}")
@@ -72,7 +72,7 @@ class IntegratedBacktester:
         print(f"   Days to analyze: {self.days_back}")
         
         # Run the sophisticated strategy
-        print("\n🎯 Executing sophisticated multi-timeframe strategy...")
+        print("\n Executing sophisticated multi-timeframe strategy...")
         results = self.executor.run_strategy(data_file, days_back=self.days_back)
         
         # Display results
@@ -84,59 +84,59 @@ class IntegratedBacktester:
         """Display comprehensive backtest results"""
         
         print("\n" + "=" * 60)
-        print("📊 BACKTEST RESULTS")
+        print(" BACKTEST RESULTS")
         print("=" * 60)
         
         # Basic metrics
-        print(f"📈 Total Signals Generated: {results['signals_generated']}")
-        print(f"🚀 Trades Executed: {results['trades_executed']}")
-        print(f"✅ Trades Closed: {results['trades_closed']}")
-        print(f"💰 Total P&L: ${results['total_pnl']:.2f}")
-        print(f"🎯 Winning Trades: {results['winning_trades']}")
-        print(f"❌ Losing Trades: {results['losing_trades']}")
+        print(f" Total Signals Generated: {results['signals_generated']}")
+        print(f" Trades Executed: {results['trades_executed']}")
+        print(f" Trades Closed: {results['trades_closed']}")
+        print(f" Total P&L: ${results['total_pnl']:.2f}")
+        print(f" Winning Trades: {results['winning_trades']}")
+        print(f" Losing Trades: {results['losing_trades']}")
         
         # Calculate additional metrics
         if results['trades_closed'] > 0:
             win_rate = (results['winning_trades'] / results['trades_closed']) * 100
-            print(f"📊 Win Rate: {win_rate:.1f}%")
+            print(f" Win Rate: {win_rate:.1f}%")
             
             # Performance assessment
             if win_rate >= 50:
-                print("✅ EXCELLENT win rate!")
+                print(" EXCELLENT win rate!")
             elif win_rate >= 40:
-                print("✅ GOOD win rate")
+                print(" GOOD win rate")
             elif win_rate >= 30:
-                print("⚠️ ACCEPTABLE win rate")
+                print("WARNING: ACCEPTABLE win rate")
             else:
-                print("❌ POOR win rate - needs optimization")
+                print(" POOR win rate - needs optimization")
         else:
-            print("📊 Win Rate: N/A (no closed trades)")
+            print(" Win Rate: N/A (no closed trades)")
         
         # P&L assessment
         if results['total_pnl'] > 0:
-            print("💰 PROFITABLE STRATEGY!")
+            print(" PROFITABLE STRATEGY!")
         elif results['total_pnl'] == 0:
-            print("💰 BREAK-EVEN STRATEGY")
+            print(" BREAK-EVEN STRATEGY")
         else:
-            print("💰 LOSING STRATEGY - needs optimization")
+            print(" LOSING STRATEGY - needs optimization")
         
         # Strategy effectiveness
         if results['signals_generated'] == 0:
-            print("\n🔧 OPTIMIZATION NEEDED:")
+            print("\n OPTIMIZATION NEEDED:")
             print("   - No signals generated")
             print("   - Consider reducing confidence_threshold")
             print("   - Check BOS/CHOCH detection parameters")
             print("   - Try different instruments (trending markets)")
         
         elif results['trades_executed'] == 0:
-            print("\n🔧 OPTIMIZATION NEEDED:")
+            print("\n OPTIMIZATION NEEDED:")
             print("   - Signals generated but no trades executed")
             print("   - 1M confirmation may be too strict")
             print("   - Retracement confirmation may be too strict")
             print("   - Consider relaxing confirmation parameters")
         
         elif results['trades_closed'] == 0:
-            print("\n⏳ TRADES STILL OPEN:")
+            print("\n TRADES STILL OPEN:")
             print("   - Some trades executed but none closed yet")
             print("   - May need longer backtesting period")
             print("   - Check if stops/targets are appropriate")
@@ -172,7 +172,7 @@ def main():
             break
     
     if data_file is None:
-        print("❌ No data files found!")
+        print(" No data files found!")
         print("Expected files:")
         for file in data_files:
             print(f"   - {file}")
@@ -191,17 +191,17 @@ def main():
     results = backtester.run_backtest(data_file)
     
     if results is not None:
-        print("\n🎉 Backtest completed successfully!")
+        print("\n Backtest completed successfully!")
         
         # Suggestions based on results
         if results.get('trades_closed', 0) > 0:
-            print("\n💡 NEXT STEPS:")
+            print("\n NEXT STEPS:")
             print("   - Review individual trade details")
             print("   - Test with different parameters")
             print("   - Try different time periods")
             print("   - Test on multiple instruments")
     else:
-        print("\n❌ Backtest failed")
+        print("\n Backtest failed")
 
 if __name__ == "__main__":
     main()

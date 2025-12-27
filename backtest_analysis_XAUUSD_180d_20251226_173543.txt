@@ -1,0 +1,223 @@
+====================================================================================================
+COMPREHENSIVE BACKTEST ANALYSIS REPORT
+====================================================================================================
+Symbol: XAUUSD
+Period: 180 days
+Generated: 2025-12-26 17:35:43
+====================================================================================================
+
+BACKTEST OUTPUT:
+----------------------------------------------------------------------------------------------------
+Executor initialized 1957524830064
+======================================================================
+[START] CENTRALIZED TRADING BOT - BACKTEST MODE
+======================================================================
+
+[INFO] Configuration:
+   Symbol: XAUUSD
+   Data File: data\XAUUSD_M1.csv
+   Days Back: 180
+   Risk per Trade: 1.0%
+   Confidence Threshold: 0.6
+   ATR Multiplier: 2.5
+   Risk-Reward Ratio: 2.0:1
+
+ Starting Integrated Backtester for XAUUSD
+ Using sophisticated MultiTimeframeTradingExecutor
+ Analyzing last 180 days
+============================================================
+ Data file: data\XAUUSD_M1.csv
+
+ Configuration:
+   Symbol: XAUUSD
+   Risk per trade: 1.0%
+   Confidence threshold: 0.6
+   ATR multiplier: 2.5
+   Days to analyze: 180
+
+ Executing sophisticated multi-timeframe strategy...
+Starting PROPER Multi-Timeframe Trading Strategy for XAUUSD
+Analyzing 180 days of data
+PROPER BACKTESTING: Candle-by-candle simulation
+Loading and resampling data...
+ Backtesting from 2025-01-17 19:59:00+00:00 to 2025-07-16 19:00:00+00:00
+ Processing 15M candles (entry timeframe) candle-by-candle...
+
+ NEW BOS - Bullish entry at 2025-01-21 08:15:00+00:00
+   Confidence: 0.67
+   Price: 2732.72500
+    Retracement confirmation passed
+    Signal generated: BUY (entry price will be determined at execution)
+    Waiting for 1M confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-01-21 10:30:00+00:00
+   Confidence: 0.61
+   Price: 2701.49800
+ATR input data shape: (138, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-01-17 19:45:00+00:00  2703.085  2703.195  2702.915  2703.035     1.0
+2025-01-17 20:00:00+00:00  2703.015  2703.065  2699.785  2701.905    15.0
+2025-01-17 20:15:00+00:00  2701.885  2703.545  2701.435  2702.465    15.0
+2025-01-17 20:30:00+00:00  2702.405  2704.035  2701.705  2703.515    15.0
+2025-01-17 20:45:00+00:00  2703.535  2703.735  2700.205  2700.705    15.0
+    Waiting for retracement confirmation...
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+     CHOCH de-duplicated (same level: 2701.49800)
+
+ NEW BOS - Bullish entry at 2025-01-24 08:00:00+00:00
+   Confidence: 0.67
+   Price: 2778.11500
+    Retracement confirmation passed
+    Signal generated: BUY (entry price will be determined at execution)
+    Waiting for 1M confirmation...
+
+ NEW BOS - Bullish entry at 2025-02-04 15:45:00+00:00
+   Confidence: 0.67
+   Price: 2845.33500
+    Retracement confirmation passed
+    Signal generated: BUY (entry price will be determined at execution)
+
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+STRUCTURE-AWARE METRICS ANALYSIS
+====================================================================================================
+
+A. EVENT TYPE BREAKDOWN
+----------------------------------------------------------------------------------------------------
+CHOCH Trades:
+  Total Trades: [To be calculated from detailed logs]
+  Win Rate: [To be calculated]
+  Average R: [To be calculated]
+  % Reaching TP1: [To be calculated]
+  % Invalidated Immediately (<5 candles): [To be calculated]
+
+BOS Trades:
+  Total Trades: [To be calculated from detailed logs]
+  Win Rate: [To be calculated]
+  Average R: [To be calculated]
+  % Reaching TP1: [To be calculated]
+  % Invalidated Immediately (<5 candles): [To be calculated]
+
+B. DISTANCE METRICS
+----------------------------------------------------------------------------------------------------
+Entry → BOS Level:
+  Mean: [To be calculated]
+  Winners Avg: [To be calculated]
+  Losers Avg: [To be calculated]
+
+Entry → HTF Equilibrium:
+  Mean: [To be calculated]
+  Winners Avg: [To be calculated]
+  Losers Avg: [To be calculated]
+
+SL Distance (in ATR):
+  Mean: [To be calculated]
+
+C. TIME-TO-OUTCOME METRICS
+----------------------------------------------------------------------------------------------------
+Candles to Outcome:
+  Winners (to TP): [To be calculated]
+  Losers (to SL): [To be calculated]
+  Pattern Analysis: [Fast fail = bad entry | Slow fail = wrong HTF bias]
+
+D. REGIME SEGMENTATION
+----------------------------------------------------------------------------------------------------
+HTF Trend Breakdown:
+  Up: [trades] trades, Win Rate: [%]
+  Down: [trades] trades, Win Rate: [%]
+  Range: [trades] trades, Win Rate: [%]
+
+ATR Regime Breakdown:
+  High ATR: [trades] trades, Win Rate: [%]
+  Normal ATR: [trades] trades, Win Rate: [%]
+  Low ATR: [trades] trades, Win Rate: [%]
+
+E. PULLBACK QUALITY ANALYSIS
+----------------------------------------------------------------------------------------------------
+Retracement % Breakdown:
+  <38%: [trades] trades, Win Rate: [%]
+  38-50%: [trades] trades, Win Rate: [%]
+  50-62%: [trades] trades, Win Rate: [%]
+  62-70%: [trades] trades, Win Rate: [%]
+  >70%: [trades] trades, Win Rate: [%]
+
+Entry Location Breakdown:
+  Discount: [trades] trades, Win Rate: [%]
+  Equilibrium: [trades] trades, Win Rate: [%]
+  Premium: [trades] trades, Win Rate: [%]
+
+====================================================================================================
+ACTIONABLE INSIGHTS
+====================================================================================================
+
+Based on the metrics above, the following optimizations are recommended:
+
+1. Event Type Performance:
+   - If CHOCH win rate < BOS win rate → Tighten CHOCH filters
+   - If BOS win rate < CHOCH win rate → Relax BOS entry conditions
+
+2. Entry Location:
+   - If Premium entries have low win rate → Avoid entries above 60% retracement
+   - If Discount entries perform best → Focus on 38-50% retracements
+
+3. Regime Optimization:
+   - BOS should perform best in: Trending + High ATR
+   - CHOCH should perform best in: Range + Compression
+   - If mixed → Add regime filters
+
+4. Distance Metrics:
+   - If losers have smaller distance to HTF extreme → Entries too close to range boundary
+   - If winners have larger distance to equilibrium → Waiting for deeper pullbacks helps
+
+====================================================================================================
+END OF REPORT
+====================================================================================================

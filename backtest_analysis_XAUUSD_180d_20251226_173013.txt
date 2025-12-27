@@ -1,0 +1,135 @@
+====================================================================================================
+COMPREHENSIVE BACKTEST ANALYSIS REPORT
+====================================================================================================
+Symbol: XAUUSD
+Period: 180 days
+Generated: 2025-12-26 17:30:13
+====================================================================================================
+
+BACKTEST OUTPUT:
+----------------------------------------------------------------------------------------------------
+Executor initialized 1854638405488
+======================================================================
+[START] CENTRALIZED TRADING BOT - BACKTEST MODE
+======================================================================
+
+[INFO] Configuration:
+   Symbol: XAUUSD
+   Data File: data\XAUUSD_M1.csv
+   Days Back: 180
+   Risk per Trade: 1.0%
+   Confidence Threshold: 0.6
+   ATR Multiplier: 2.5
+   Risk-Reward Ratio: 2.0:1
+
+ Starting Integrated Backtester for XAUUSD
+ Using sophisticated MultiTimeframeTradingExecutor
+ Analyzing last 180 days
+============================================================
+ Data file: data\XAUUSD_M1.csv
+
+ Configuration:
+   Symbol: XAUUSD
+   Risk per trade: 1.0%
+   Confidence threshold: 0.6
+   ATR multiplier: 2.5
+   Days to analyze: 180
+
+ Executing sophisticated multi-timeframe strategy...
+
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+STRUCTURE-AWARE METRICS ANALYSIS
+====================================================================================================
+
+A. EVENT TYPE BREAKDOWN
+----------------------------------------------------------------------------------------------------
+CHOCH Trades:
+  Total Trades: [To be calculated from detailed logs]
+  Win Rate: [To be calculated]
+  Average R: [To be calculated]
+  % Reaching TP1: [To be calculated]
+  % Invalidated Immediately (<5 candles): [To be calculated]
+
+BOS Trades:
+  Total Trades: [To be calculated from detailed logs]
+  Win Rate: [To be calculated]
+  Average R: [To be calculated]
+  % Reaching TP1: [To be calculated]
+  % Invalidated Immediately (<5 candles): [To be calculated]
+
+B. DISTANCE METRICS
+----------------------------------------------------------------------------------------------------
+Entry → BOS Level:
+  Mean: [To be calculated]
+  Winners Avg: [To be calculated]
+  Losers Avg: [To be calculated]
+
+Entry → HTF Equilibrium:
+  Mean: [To be calculated]
+  Winners Avg: [To be calculated]
+  Losers Avg: [To be calculated]
+
+SL Distance (in ATR):
+  Mean: [To be calculated]
+
+C. TIME-TO-OUTCOME METRICS
+----------------------------------------------------------------------------------------------------
+Candles to Outcome:
+  Winners (to TP): [To be calculated]
+  Losers (to SL): [To be calculated]
+  Pattern Analysis: [Fast fail = bad entry | Slow fail = wrong HTF bias]
+
+D. REGIME SEGMENTATION
+----------------------------------------------------------------------------------------------------
+HTF Trend Breakdown:
+  Up: [trades] trades, Win Rate: [%]
+  Down: [trades] trades, Win Rate: [%]
+  Range: [trades] trades, Win Rate: [%]
+
+ATR Regime Breakdown:
+  High ATR: [trades] trades, Win Rate: [%]
+  Normal ATR: [trades] trades, Win Rate: [%]
+  Low ATR: [trades] trades, Win Rate: [%]
+
+E. PULLBACK QUALITY ANALYSIS
+----------------------------------------------------------------------------------------------------
+Retracement % Breakdown:
+  <38%: [trades] trades, Win Rate: [%]
+  38-50%: [trades] trades, Win Rate: [%]
+  50-62%: [trades] trades, Win Rate: [%]
+  62-70%: [trades] trades, Win Rate: [%]
+  >70%: [trades] trades, Win Rate: [%]
+
+Entry Location Breakdown:
+  Discount: [trades] trades, Win Rate: [%]
+  Equilibrium: [trades] trades, Win Rate: [%]
+  Premium: [trades] trades, Win Rate: [%]
+
+====================================================================================================
+ACTIONABLE INSIGHTS
+====================================================================================================
+
+Based on the metrics above, the following optimizations are recommended:
+
+1. Event Type Performance:
+   - If CHOCH win rate < BOS win rate → Tighten CHOCH filters
+   - If BOS win rate < CHOCH win rate → Relax BOS entry conditions
+
+2. Entry Location:
+   - If Premium entries have low win rate → Avoid entries above 60% retracement
+   - If Discount entries perform best → Focus on 38-50% retracements
+
+3. Regime Optimization:
+   - BOS should perform best in: Trending + High ATR
+   - CHOCH should perform best in: Range + Compression
+   - If mixed → Add regime filters
+
+4. Distance Metrics:
+   - If losers have smaller distance to HTF extreme → Entries too close to range boundary
+   - If winners have larger distance to equilibrium → Waiting for deeper pullbacks helps
+
+====================================================================================================
+END OF REPORT
+====================================================================================================
