@@ -95,6 +95,17 @@ class IntegratedBacktester:
         print(f" Winning Trades: {results['winning_trades']}")
         print(f" Losing Trades: {results['losing_trades']}")
         
+        # BOS Follow-Through Filter Stats
+        if hasattr(self.executor, 'stats'):
+            print(f"\n BOS FOLLOW-THROUGH FILTER STATS:")
+            print(f"   BOS Rejected (Weak Displacement): {self.executor.stats.get('bos_rejected_displacement', 0)}")
+            print(f"   BOS Rejected (Weak Body Ratio): {self.executor.stats.get('bos_rejected_body_ratio', 0)}")
+            print(f"   BOS Rejected (Other): {self.executor.stats.get('bos_rejected_other', 0)}")
+            total_bos_rejected = (self.executor.stats.get('bos_rejected_displacement', 0) + 
+                                 self.executor.stats.get('bos_rejected_body_ratio', 0) + 
+                                 self.executor.stats.get('bos_rejected_other', 0))
+            print(f"   Total BOS Rejected: {total_bos_rejected}")
+        
         # Calculate additional metrics
         if results['trades_closed'] > 0:
             win_rate = (results['winning_trades'] / results['trades_closed']) * 100

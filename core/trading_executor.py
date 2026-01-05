@@ -1,5 +1,5 @@
-import pandas as pd
-import numpy as np
+import pandas as pd  # type: ignore
+import numpy as np  # type: ignore
 from typing import Dict, List, Optional, Tuple, Literal
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -29,6 +29,7 @@ class TradeSignal:
     risk_reward_ratio: float
     stop_loss_pips: float
     take_profit_pips: float
+    broken_level: Optional[Dict] = None  # Store broken level info for BOS follow-through validation
 
 @dataclass
 class TradeExecution:
@@ -84,6 +85,10 @@ class MultiTimeframeTradingExecutor:
         # BOS in sideways/sideways conditions
         self.SIDEWAYS_BOS_ALLOW: float = 0.60     # was ~0.65
 
+        # --- BOS FOLLOW-THROUGH PARAMETERS ---
+        self.MIN_BOS_DISPLACEMENT_ATR = 0.5   # conservative, can tune later
+        self.MIN_BOS_BODY_RATIO = 0.6         # body / candle range
+
         # Latest 1H trend strength (0–1, based on slope/vol); used for soft gating
         self._last_trend_strength_1h: float = 1.0
         
@@ -123,7 +128,10 @@ class MultiTimeframeTradingExecutor:
             'aligned_events': 0,
             'retracement_events': 0,
             'confirmed_1m_events': 0,
-            'processed_candles': 0
+            'processed_candles': 0,
+            'bos_rejected_displacement': 0,  # Track BOS rejections by displacement
+            'bos_rejected_body_ratio': 0,     # Track BOS rejections by body ratio
+            'bos_rejected_other': 0           # Track other BOS rejections
         }
         
         # DEBUG: Confirm executor persistence
@@ -620,7 +628,8 @@ class MultiTimeframeTradingExecutor:
             timeframe_1m_confirmation="PENDING",
             risk_reward_ratio=self.risk_reward_ratio,
             stop_loss_pips=self.stop_loss_pips,
-            take_profit_pips=self.stop_loss_pips * self.risk_reward_ratio
+            take_profit_pips=self.stop_loss_pips * self.risk_reward_ratio,
+            broken_level=event.broken_level  # Store broken level for BOS follow-through validation
         )
         
         return signal
@@ -672,6 +681,81 @@ class MultiTimeframeTradingExecutor:
                     f"(Waiting for BOS to confirm CHOCH direction)"
                 )
                 return None
+
+        # --------------------------------------------------
+        # BOS FOLLOW-THROUGH VALIDATION (CRITICAL)
+        # --------------------------------------------------
+        if signal.event_type == EventType.BOS.value:
+            if signal.broken_level is None:
+                print("[REJECT] BOS REJECTED (No broken level data)")
+                return None
+            
+            bos_level = signal.broken_level.get("price")
+            if bos_level is None:
+                print("[REJECT] BOS REJECTED (Invalid broken level)")
+                return None
+            
+            # Get BOS candle from 15M data
+            bos_candle = None
+            close_price = None
+            if self._resampled_data is not None:
+                data_15m = self._resampled_data.get('15M')
+                if data_15m is not None and not data_15m.empty:
+                    # Get candle at or just after the event timestamp
+                    event_candles = data_15m.loc[data_15m.index >= signal.timestamp]
+                    if not event_candles.empty:
+                        bos_candle = event_candles.iloc[0]
+                        close_price = bos_candle['Close']
+            
+            if close_price is None:
+                print("[REJECT] BOS REJECTED (Cannot get BOS candle)")
+                return None
+            
+            # Get ATR from 15M data (prefer 15M, fallback to 1M)
+            atr = None
+            if self._resampled_data is not None:
+                data_15m = self._resampled_data.get('15M')
+                if data_15m is not None and not data_15m.empty:
+                    data_pre_entry = data_15m.loc[data_15m.index <= signal.timestamp]
+                    atr_series = self.risk_manager.calculate_atr(data_pre_entry)
+                    if len(atr_series) > 0 and not pd.isna(atr_series.iloc[-1]):
+                        atr = atr_series.iloc[-1]
+            
+            # Fallback to 1M ATR if 15M not available
+            if atr is None:
+                atr_1m_series = self.risk_manager.calculate_atr(data_1m)
+                if len(atr_1m_series) > 0 and not pd.isna(atr_1m_series.iloc[-1]):
+                    atr = atr_1m_series.iloc[-1]
+            
+            if atr is None or atr == 0:
+                print("[REJECT] BOS REJECTED (ATR unavailable)")
+                return None
+            
+            displacement = abs(close_price - bos_level)
+            
+            # ❌ Reject weak BOS (no displacement)
+            if displacement < self.MIN_BOS_DISPLACEMENT_ATR * atr:
+                self.stats['bos_rejected_displacement'] += 1
+                print(
+                    f"[REJECT] BOS REJECTED (Weak Displacement) | "
+                    f"Disp={displacement:.2f}, ATR={atr:.2f}, Required={self.MIN_BOS_DISPLACEMENT_ATR * atr:.2f}"
+                )
+                return None
+            
+            # Candle structure check (acceptance)
+            if bos_candle is not None:
+                candle_range = bos_candle['High'] - bos_candle['Low']
+                candle_body = abs(bos_candle['Close'] - bos_candle['Open'])
+                
+                body_ratio = candle_body / candle_range if candle_range > 0 else 0
+                
+                if body_ratio < self.MIN_BOS_BODY_RATIO:
+                    self.stats['bos_rejected_body_ratio'] += 1
+                    print(
+                        f"[REJECT] BOS REJECTED (Weak Candle Body) | "
+                        f"BodyRatio={body_ratio:.2f}, Required={self.MIN_BOS_BODY_RATIO:.2f}"
+                    )
+                    return None
 
         # Wait for 1M confirmation
         if not self.confirm_1m_signal(data_1m, signal.direction, signal.timestamp, signal.event_type):
@@ -800,6 +884,84 @@ class MultiTimeframeTradingExecutor:
                     f"(Waiting for BOS to confirm CHOCH direction)"
                 )
                 return None
+
+        # --------------------------------------------------
+        # BOS FOLLOW-THROUGH VALIDATION (CRITICAL)
+        # --------------------------------------------------
+        if signal.event_type == EventType.BOS.value:
+            if signal.broken_level is None:
+                print("[REJECT] BOS REJECTED (No broken level data)")
+                return None
+            
+            bos_level = signal.broken_level.get("price")
+            if bos_level is None:
+                print("[REJECT] BOS REJECTED (Invalid broken level)")
+                return None
+            
+            # Get BOS candle from 15M data
+            bos_candle = None
+            close_price = None
+            if self._resampled_data is not None:
+                data_15m = self._resampled_data.get('15M')
+                if data_15m is not None and not data_15m.empty:
+                    # Get 15M data up to current time only
+                    data_15m_current = data_15m.loc[data_15m.index <= current_time]
+                    # Get candle at or just after the event timestamp
+                    event_candles = data_15m_current.loc[data_15m_current.index >= signal.timestamp]
+                    if not event_candles.empty:
+                        bos_candle = event_candles.iloc[0]
+                        close_price = bos_candle['Close']
+            
+            if close_price is None:
+                print("[REJECT] BOS REJECTED (Cannot get BOS candle)")
+                return None
+            
+            # Get ATR from 15M data (prefer 15M, fallback to 1M)
+            atr = None
+            if self._resampled_data is not None:
+                data_15m = self._resampled_data.get('15M')
+                if data_15m is not None and not data_15m.empty:
+                    data_15m_current = data_15m.loc[data_15m.index <= current_time]
+                    data_pre_entry = data_15m_current.loc[data_15m_current.index <= signal.timestamp]
+                    atr_series = self.risk_manager.calculate_atr(data_pre_entry)
+                    if len(atr_series) > 0 and not pd.isna(atr_series.iloc[-1]):
+                        atr = atr_series.iloc[-1]
+            
+            # Fallback to 1M ATR if 15M not available
+            if atr is None:
+                atr_1m_series = self.risk_manager.calculate_atr(data_1m_current)
+                if len(atr_1m_series) > 0 and not pd.isna(atr_1m_series.iloc[-1]):
+                    atr = atr_1m_series.iloc[-1]
+            
+            if atr is None or atr == 0:
+                print("[REJECT] BOS REJECTED (ATR unavailable)")
+                return None
+            
+            displacement = abs(close_price - bos_level)
+            
+            # ❌ Reject weak BOS (no displacement)
+            if displacement < self.MIN_BOS_DISPLACEMENT_ATR * atr:
+                self.stats['bos_rejected_displacement'] += 1
+                print(
+                    f"[REJECT] BOS REJECTED (Weak Displacement) | "
+                    f"Disp={displacement:.2f}, ATR={atr:.2f}, Required={self.MIN_BOS_DISPLACEMENT_ATR * atr:.2f}"
+                )
+                return None
+            
+            # Candle structure check (acceptance)
+            if bos_candle is not None:
+                candle_range = bos_candle['High'] - bos_candle['Low']
+                candle_body = abs(bos_candle['Close'] - bos_candle['Open'])
+                
+                body_ratio = candle_body / candle_range if candle_range > 0 else 0
+                
+                if body_ratio < self.MIN_BOS_BODY_RATIO:
+                    self.stats['bos_rejected_body_ratio'] += 1
+                    print(
+                        f"[REJECT] BOS REJECTED (Weak Candle Body) | "
+                        f"BodyRatio={body_ratio:.2f}, Required={self.MIN_BOS_BODY_RATIO:.2f}"
+                    )
+                    return None
 
         # CRITICAL FIX: Get the actual entry price from 1M confirmation candle
         confirmation_candle = self._get_confirmation_candle_price(data_1m_current, signal.direction, signal.timestamp, current_time, signal.event_type)
@@ -1290,7 +1452,10 @@ class MultiTimeframeTradingExecutor:
             'aligned_events': 0,
             'retracement_events': 0,
             'confirmed_1m_events': 0,
-            'processed_candles': 0
+            'processed_candles': 0,
+            'bos_rejected_displacement': 0,  # Track BOS rejections by displacement
+            'bos_rejected_body_ratio': 0,     # Track BOS rejections by body ratio
+            'bos_rejected_other': 0           # Track other BOS rejections
         }
 
         results = {
