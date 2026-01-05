@@ -1,0 +1,1479 @@
+﻿Executor initialized 2071761575552
+======================================================================
+[START] CENTRALIZED TRADING BOT - BACKTEST MODE
+======================================================================
+
+[INFO] Configuration:
+   Symbol: XAUUSD
+   Data File: data\XAUUSD_M1.csv
+   Days Back: 45
+   Risk per Trade: 1.0%
+   Confidence Threshold: 0.6
+   ATR Multiplier: 2.5
+   Risk-Reward Ratio: 2.0:1
+
+ Starting Integrated Backtester for XAUUSD
+ Using sophisticated MultiTimeframeTradingExecutor
+ Analyzing last 45 days
+============================================================
+ Data file: data\XAUUSD_M1.csv
+
+ Configuration:
+   Symbol: XAUUSD
+   Risk per trade: 1.0%
+   Confidence threshold: 0.6
+   ATR multiplier: 2.5
+   Days to analyze: 45
+
+ Executing sophisticated multi-timeframe strategy...
+Starting PROPER Multi-Timeframe Trading Strategy for XAUUSD
+Analyzing 45 days of data
+PROPER BACKTESTING: Candle-by-candle simulation
+Loading and resampling data...
+ Backtesting from 2025-06-01 22:00:00+00:00 to 2025-07-16 19:00:00+00:00
+ Processing 15M candles (entry timeframe) candle-by-candle...
+
+ NEW BOS - Bullish entry at 2025-06-03 00:15:00+00:00
+   Confidence: 0.60
+   Price: 3391.93500
+    Retracement confirmation passed
+    Signal generated: BUY (entry price will be determined at execution)
+ATR input data shape: (98, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+[REJECT] BOS REJECTED (Weak Candle Body) | BodyRatio=0.46, Required=0.60
+    Waiting for 1M confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-06-03 08:00:00+00:00
+   Confidence: 0.79
+   Price: 3350.93800
+ATR input data shape: (133, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+
+ NEW BOS - Bullish entry at 2025-06-04 22:30:00+00:00
+   Confidence: 0.75
+   Price: 3384.49500
+    Retracement confirmation passed
+    Signal generated: BUY (entry price will be determined at execution)
+ATR input data shape: (251, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+ATR input data shape: (251, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+[REJECT] REJECTED: Market not expanding (Distribution/Chop)
+    Waiting for 1M confirmation...
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+     CHOCH de-duplicated (same level: 3350.93800)
+
+ NEW CHOCH - Bearish entry at 2025-06-05 07:15:00+00:00
+   Confidence: 0.61
+   Price: 3360.92500
+ATR input data shape: (314, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+     CHOCH de-duplicated (same level: 3360.92500)
+
+ NEW BOS - Bullish entry at 2025-06-10 14:15:00+00:00
+   Confidence: 0.75
+   Price: 3348.89500
+    Retracement confirmation passed
+    Signal generated: BUY (entry price will be determined at execution)
+ATR input data shape: (616, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+ATR input data shape: (616, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+[REJECT] REJECTED: Market not expanding (Distribution/Chop)
+    Waiting for 1M confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-06-10 19:30:00+00:00
+   Confidence: 0.61
+   Price: 3319.21500
+ATR input data shape: (639, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+     CHOCH de-duplicated (same level: 3319.21500)
+
+ NEW BOS - Bullish entry at 2025-06-13 03:15:00+00:00
+   Confidence: 0.87
+   Price: 3444.12500
+    Retracement confirmation passed
+    Signal generated: BUY (entry price will be determined at execution)
+ATR input data shape: (849, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+ATR input data shape: (849, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+[REJECT] REJECTED: Market not expanding (Distribution/Chop)
+    Waiting for 1M confirmation...
+
+ NEW BOS - Bearish entry at 2025-06-16 14:15:00+00:00
+   Confidence: 0.67
+   Price: 3382.52500
+    Retracement confirmation passed
+    Signal generated: SELL (entry price will be determined at execution)
+ATR input data shape: (984, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+ATR input data shape: (984, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+[REJECT] REJECTED: Market not expanding (Distribution/Chop)
+    Waiting for 1M confirmation...
+
+ NEW CHOCH - Bullish entry at 2025-06-18 03:15:00+00:00
+   Confidence: 0.61
+   Price: 3399.94800
+ATR input data shape: (1126, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+     CHOCH de-duplicated (same level: 3399.94800)
+     CHOCH de-duplicated (same level: 3399.94800)
+     CHOCH de-duplicated (same level: 3399.94800)
+     CHOCH de-duplicated (same level: 3399.94800)
+     CHOCH de-duplicated (same level: 3399.94800)
+     CHOCH de-duplicated (same level: 3399.94800)
+     CHOCH de-duplicated (same level: 3399.94800)
+
+ NEW BOS - Bearish entry at 2025-06-18 22:15:00+00:00
+   Confidence: 0.67
+   Price: 3362.35500
+    Retracement confirmation passed
+    Signal generated: SELL (entry price will be determined at execution)
+ATR input data shape: (1193, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+[REJECT] BOS REJECTED (Weak Candle Body) | BodyRatio=0.33, Required=0.60
+    Waiting for 1M confirmation...
+
+ NEW BOS - Bearish entry at 2025-06-19 07:45:00+00:00
+   Confidence: 0.67
+   Price: 3347.26500
+    Retracement confirmation passed
+    Signal generated: SELL (entry price will be determined at execution)
+ATR input data shape: (1231, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+[REJECT] BOS REJECTED (Weak Candle Body) | BodyRatio=0.26, Required=0.60
+    Waiting for 1M confirmation...
+
+ NEW BOS - Bullish entry at 2025-06-23 17:30:00+00:00
+   Confidence: 0.75
+   Price: 3393.34800
+    Retracement confirmation passed
+    Signal generated: BUY (entry price will be determined at execution)
+ATR input data shape: (1444, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+[REJECT] BOS REJECTED (Weak Candle Body) | BodyRatio=0.57, Required=0.60
+    Waiting for 1M confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-06-24 00:15:00+00:00
+   Confidence: 1.00
+   Price: 3332.86500
+ATR input data shape: (1472, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+
+ NEW BOS - Bearish entry at 2025-06-24 08:00:00+00:00
+   Confidence: 0.67
+   Price: 3315.85500
+    Retracement confirmation passed
+    Signal generated: SELL (entry price will be determined at execution)
+ATR input data shape: (1497, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+ATR input data shape: (1497, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+[REJECT] REJECTED: Market not expanding (Distribution/Chop)
+    Waiting for 1M confirmation...
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+
+ NEW BOS - Bearish entry at 2025-06-24 14:45:00+00:00
+   Confidence: 0.67
+   Price: 3295.09800
+    Retracement confirmation passed
+    Signal generated: SELL (entry price will be determined at execution)
+ATR input data shape: (1526, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+[REJECT] BOS REJECTED (Weak Candle Body) | BodyRatio=0.40, Required=0.60
+    Waiting for 1M confirmation...
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+     CHOCH de-duplicated (same level: 3332.86500)
+
+ NEW CHOCH - Bullish entry at 2025-06-25 23:45:00+00:00
+   Confidence: 0.61
+   Price: 3336.84800
+ATR input data shape: (1654, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+     CHOCH de-duplicated (same level: 3336.84800)
+     CHOCH de-duplicated (same level: 3336.84800)
+     CHOCH de-duplicated (same level: 3336.84800)
+     CHOCH de-duplicated (same level: 3336.84800)
+     CHOCH de-duplicated (same level: 3336.84800)
+     CHOCH de-duplicated (same level: 3336.84800)
+     CHOCH de-duplicated (same level: 3336.84800)
+
+ NEW BOS - Bearish entry at 2025-06-27 13:45:00+00:00
+   Confidence: 1.00
+   Price: 3255.48500
+    Retracement confirmation passed
+    Signal generated: SELL (entry price will be determined at execution)
+ATR input data shape: (1801, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+ATR input data shape: (1801, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+[REJECT] REJECTED: Market not expanding (Distribution/Chop)
+    Waiting for 1M confirmation...
+
+ NEW CHOCH - Bullish entry at 2025-06-30 09:00:00+00:00
+   Confidence: 0.92
+   Price: 3296.59800
+ATR input data shape: (1875, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+
+ NEW BOS - Bullish entry at 2025-07-01 13:15:00+00:00
+   Confidence: 1.00
+   Price: 3357.86500
+    Retracement confirmation passed
+    Signal generated: BUY (entry price will be determined at execution)
+ATR input data shape: (1981, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+[REJECT] BOS REJECTED (Weak Candle Body) | BodyRatio=0.45, Required=0.60
+    Waiting for 1M confirmation...
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+     CHOCH de-duplicated (same level: 3296.59800)
+
+ NEW BOS - Bullish entry at 2025-07-02 23:15:00+00:00
+   Confidence: 0.75
+   Price: 3365.45500
+    Retracement confirmation passed
+    Signal generated: BUY (entry price will be determined at execution)
+ATR input data shape: (2108, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+ATR input data shape: (2108, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+[REJECT] REJECTED: Market not expanding (Distribution/Chop)
+    Waiting for 1M confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 14:00:00+00:00
+   Confidence: 0.61
+   Price: 3327.27500
+ATR input data shape: (2171, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 14:00:00+00:00
+   Confidence: 1.00
+   Price: 3311.21500
+ATR input data shape: (2171, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 14:15:00+00:00
+   Confidence: 0.61
+   Price: 3327.27500
+ATR input data shape: (2172, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 14:15:00+00:00
+   Confidence: 1.00
+   Price: 3311.21500
+ATR input data shape: (2172, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 14:30:00+00:00
+   Confidence: 0.61
+   Price: 3327.27500
+ATR input data shape: (2173, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 14:30:00+00:00
+   Confidence: 1.00
+   Price: 3311.21500
+ATR input data shape: (2173, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 14:45:00+00:00
+   Confidence: 0.61
+   Price: 3327.27500
+ATR input data shape: (2174, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 14:45:00+00:00
+   Confidence: 1.00
+   Price: 3311.21500
+ATR input data shape: (2174, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 15:00:00+00:00
+   Confidence: 0.61
+   Price: 3327.27500
+ATR input data shape: (2175, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 15:00:00+00:00
+   Confidence: 1.00
+   Price: 3311.21500
+ATR input data shape: (2175, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 15:15:00+00:00
+   Confidence: 0.61
+   Price: 3327.27500
+ATR input data shape: (2176, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 15:15:00+00:00
+   Confidence: 1.00
+   Price: 3311.21500
+ATR input data shape: (2176, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 15:30:00+00:00
+   Confidence: 0.61
+   Price: 3327.27500
+ATR input data shape: (2177, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 15:30:00+00:00
+   Confidence: 1.00
+   Price: 3311.21500
+ATR input data shape: (2177, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 15:45:00+00:00
+   Confidence: 0.61
+   Price: 3327.27500
+ATR input data shape: (2178, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 15:45:00+00:00
+   Confidence: 1.00
+   Price: 3311.21500
+ATR input data shape: (2178, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 16:00:00+00:00
+   Confidence: 0.61
+   Price: 3327.27500
+ATR input data shape: (2179, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 16:00:00+00:00
+   Confidence: 1.00
+   Price: 3311.21500
+ATR input data shape: (2179, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 16:15:00+00:00
+   Confidence: 0.61
+   Price: 3327.27500
+ATR input data shape: (2180, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 16:15:00+00:00
+   Confidence: 1.00
+   Price: 3311.21500
+ATR input data shape: (2180, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 16:30:00+00:00
+   Confidence: 0.61
+   Price: 3327.27500
+ATR input data shape: (2181, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 16:30:00+00:00
+   Confidence: 1.00
+   Price: 3311.21500
+ATR input data shape: (2181, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 16:45:00+00:00
+   Confidence: 0.61
+   Price: 3327.27500
+ATR input data shape: (2182, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 16:45:00+00:00
+   Confidence: 1.00
+   Price: 3311.21500
+ATR input data shape: (2182, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 17:00:00+00:00
+   Confidence: 0.61
+   Price: 3327.27500
+ATR input data shape: (2183, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 17:00:00+00:00
+   Confidence: 1.00
+   Price: 3311.21500
+ATR input data shape: (2183, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 17:15:00+00:00
+   Confidence: 0.61
+   Price: 3327.27500
+ATR input data shape: (2184, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 17:15:00+00:00
+   Confidence: 1.00
+   Price: 3311.21500
+ATR input data shape: (2184, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 17:30:00+00:00
+   Confidence: 0.61
+   Price: 3327.27500
+ATR input data shape: (2185, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 17:30:00+00:00
+   Confidence: 1.00
+   Price: 3311.21500
+ATR input data shape: (2185, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 17:45:00+00:00
+   Confidence: 0.61
+   Price: 3327.27500
+ATR input data shape: (2186, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Retracement confirmation passed
+    Signal generated: SELL (entry price will be determined at execution)
+LOCK CHECK CHOCH SELL None None
+  CHOCH-BOS FILTER: SELL CHOCH rejected (Waiting for BOS to confirm CHOCH direction)
+    Waiting for 1M confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-03 17:45:00+00:00
+   Confidence: 1.00
+   Price: 3311.21500
+ATR input data shape: (2186, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+     CHOCH de-duplicated (same level: 3311.21500)
+
+ NEW BOS - Bullish entry at 2025-07-11 15:45:00+00:00
+   Confidence: 0.75
+   Price: 3368.55900
+    Retracement confirmation passed
+    Signal generated: BUY (entry price will be determined at execution)
+ATR input data shape: (2712, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+[REJECT] BOS REJECTED (Weak Candle Body) | BodyRatio=0.13, Required=0.60
+    Waiting for 1M confirmation...
+
+ NEW BOS - Bearish entry at 2025-07-15 17:00:00+00:00
+   Confidence: 0.67
+   Price: 3320.05500
+    Retracement confirmation passed
+    Signal generated: SELL (entry price will be determined at execution)
+ATR input data shape: (2900, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+datetime                                                                 
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+[REJECT] BOS REJECTED (Weak Candle Body) | BodyRatio=0.54, Required=0.60
+    Waiting for 1M confirmation...
+
+ NEW CHOCH - Bearish entry at 2025-07-16 07:45:00+00:00
+   Confidence: 0.61
+   Price: 3346.98500
+ATR input data shape: (2958, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+     CHOCH de-duplicated (same level: 3346.98500)
+     CHOCH de-duplicated (same level: 3346.98500)
+     CHOCH de-duplicated (same level: 3346.98500)
+     CHOCH de-duplicated (same level: 3346.98500)
+     CHOCH de-duplicated (same level: 3346.98500)
+     CHOCH de-duplicated (same level: 3346.98500)
+     CHOCH de-duplicated (same level: 3346.98500)
+     CHOCH de-duplicated (same level: 3346.98500)
+     CHOCH de-duplicated (same level: 3346.98500)
+     CHOCH de-duplicated (same level: 3346.98500)
+     CHOCH de-duplicated (same level: 3346.98500)
+     CHOCH de-duplicated (same level: 3346.98500)
+     CHOCH de-duplicated (same level: 3346.98500)
+     CHOCH de-duplicated (same level: 3346.98500)
+     CHOCH de-duplicated (same level: 3346.98500)
+     CHOCH de-duplicated (same level: 3346.98500)
+     CHOCH de-duplicated (same level: 3346.98500)
+
+ NEW CHOCH - Bullish entry at 2025-07-16 16:15:00+00:00
+   Confidence: 1.00
+   Price: 3377.18500
+ATR input data shape: (2992, 5)
+Data columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+First few rows:
+                               Open      High       Low     Close  Volume
+2025-06-01 22:00:00+00:00  3298.375  3309.335  3295.208  3307.035    15.0
+2025-06-01 22:15:00+00:00  3307.035  3308.335  3299.625  3303.695    15.0
+2025-06-01 22:30:00+00:00  3303.675  3305.595  3302.145  3305.435    15.0
+2025-06-01 22:45:00+00:00  3305.385  3314.815  3305.355  3312.798    15.0
+2025-06-01 23:00:00+00:00  3312.415  3316.448  3312.005  3313.398    15.0
+    Waiting for retracement confirmation...
+     CHOCH de-duplicated (same level: 3377.18500)
+     CHOCH de-duplicated (same level: 3377.18500)
+     CHOCH de-duplicated (same level: 3377.18500)
+     CHOCH de-duplicated (same level: 3377.18500)
+     CHOCH de-duplicated (same level: 3377.18500)
+     CHOCH de-duplicated (same level: 3377.18500)
+     CHOCH de-duplicated (same level: 3377.18500)
+     CHOCH de-duplicated (same level: 3377.18500)
+     CHOCH de-duplicated (same level: 3377.18500)
+     CHOCH de-duplicated (same level: 3377.18500)
+     CHOCH de-duplicated (same level: 3377.18500)
+
+ PROPER BACKTESTING COMPLETE!
+ Results Summary:
+   Signals Generated: 16
+   Trades Executed: 0
+   Trades Closed: 0
+   Total P&L: $0.00
+   Winning Trades: 0
+   Losing Trades: 0
+
+Detailed Funnel Metrics:
+   1. Total Events: 39819
+   2. Events Passing Alignment: 29085
+   3. Events After Retracement: 16
+   4. Events After 1M Confirmation: 0
+   5. Final Trades Executed: 0
+
+============================================================
+ BACKTEST RESULTS
+============================================================
+ Total Signals Generated: 16
+ Trades Executed: 0
+ Trades Closed: 0
+ Total P&L: $0.00
+ Winning Trades: 0
+ Losing Trades: 0
+
+ BOS FOLLOW-THROUGH FILTER STATS:
+   BOS Rejected (Weak Displacement): 0
+   BOS Rejected (Weak Body Ratio): 8
+   BOS Rejected (Other): 0
+   Total BOS Rejected: 8
+
+ EXPANSION vs DISTRIBUTION FILTER STATS:
+   Rejected (Distribution/Chop): 7
+ Win Rate: N/A (no closed trades)
+ BREAK-EVEN STRATEGY
+
+ OPTIMIZATION NEEDED:
+   - Signals generated but no trades executed
+   - 1M confirmation may be too strict
+   - Retracement confirmation may be too strict
+   - Consider relaxing confirmation parameters
+
+Γ£à Operation completed successfully!

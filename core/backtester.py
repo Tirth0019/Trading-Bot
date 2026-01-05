@@ -105,6 +105,10 @@ class IntegratedBacktester:
                                  self.executor.stats.get('bos_rejected_body_ratio', 0) + 
                                  self.executor.stats.get('bos_rejected_other', 0))
             print(f"   Total BOS Rejected: {total_bos_rejected}")
+            
+            # Expansion vs Distribution Filter Stats
+            print(f"\n EXPANSION vs DISTRIBUTION FILTER STATS:")
+            print(f"   Rejected (Distribution/Chop): {self.executor.stats.get('rejected_distribution', 0)}")
         
         # Calculate additional metrics
         if results['trades_closed'] > 0:

@@ -30,6 +30,7 @@ class TradeSignal:
     stop_loss_pips: float
     take_profit_pips: float
     broken_level: Optional[Dict] = None  # Store broken level info for BOS follow-through validation
+    context: Optional[Dict] = None  # Store additional context (market phase, etc.)
 
 @dataclass
 class TradeExecution:
@@ -131,7 +132,8 @@ class MultiTimeframeTradingExecutor:
             'processed_candles': 0,
             'bos_rejected_displacement': 0,  # Track BOS rejections by displacement
             'bos_rejected_body_ratio': 0,     # Track BOS rejections by body ratio
-            'bos_rejected_other': 0           # Track other BOS rejections
+            'bos_rejected_other': 0,         # Track other BOS rejections
+            'rejected_distribution': 0        # Track expansion/distribution filter rejections
         }
         
         # DEBUG: Confirm executor persistence
@@ -584,7 +586,62 @@ class MultiTimeframeTradingExecutor:
         
         return False
     
-
+    def is_market_expanding(self, df_15m: pd.DataFrame, event_index: int, atr_value: float) -> bool:
+        """
+        Checks if market is in expansion phase after structure event.
+        
+        Uses 3 measurable signals (ANY 2 must pass):
+        1. Range Expansion: Recent candles cover more range than before
+        2. Momentum Expansion: Candle bodies are large (not wicks)
+        3. Speed Expansion: Price moves quickly away from structure
+        
+        Args:
+            df_15m: 15M timeframe DataFrame
+            event_index: Index of the structure event candle
+            atr_value: Current ATR value for speed calculation
+            
+        Returns:
+            True if market is expanding (at least 2 of 3 conditions pass), False otherwise
+        """
+        lookback = 6  # candles after event
+        
+        # Check if we have enough data
+        if event_index + lookback >= len(df_15m):
+            return False
+        
+        if event_index - lookback < 0:
+            return False
+        
+        # Get recent candles (after event) and prior candles (before event)
+        recent = df_15m.iloc[event_index + 1 : event_index + 1 + lookback]
+        prior = df_15m.iloc[event_index - lookback : event_index]
+        
+        if len(recent) < lookback or len(prior) < lookback:
+            return False
+        
+        # --- 1. Range Expansion ---
+        recent_range = (recent["High"] - recent["Low"]).mean()
+        prior_range = (prior["High"] - prior["Low"]).mean()
+        range_expansion = recent_range > 1.3 * prior_range if prior_range > 0 else False
+        
+        # --- 2. Momentum Expansion ---
+        body_ratio = (recent["Close"] - recent["Open"]).abs() / (recent["High"] - recent["Low"])
+        # Avoid division by zero
+        body_ratio = body_ratio.replace([np.inf, -np.inf], 0).fillna(0)
+        momentum_expansion = body_ratio.mean() > 0.55
+        
+        # --- 3. Speed Expansion ---
+        displacement = abs(recent["Close"].iloc[-1] - recent["Open"].iloc[0])
+        speed_expansion = displacement > 1.2 * atr_value if atr_value > 0 else False
+        
+        # Count how many conditions passed
+        passed = sum([
+            range_expansion,
+            momentum_expansion,
+            speed_expansion
+        ])
+        
+        return passed >= 2
     
     def generate_trade_signal(self, 
                              event: MarketEvent, 
@@ -629,7 +686,8 @@ class MultiTimeframeTradingExecutor:
             risk_reward_ratio=self.risk_reward_ratio,
             stop_loss_pips=self.stop_loss_pips,
             take_profit_pips=self.stop_loss_pips * self.risk_reward_ratio,
-            broken_level=event.broken_level  # Store broken level for BOS follow-through validation
+            broken_level=event.broken_level,  # Store broken level for BOS follow-through validation
+            context={}  # Initialize context for market phase tracking
         )
         
         return signal
@@ -756,6 +814,54 @@ class MultiTimeframeTradingExecutor:
                         f"BodyRatio={body_ratio:.2f}, Required={self.MIN_BOS_BODY_RATIO:.2f}"
                     )
                     return None
+
+        # --------------------------------------------------
+        # EXPANSION vs DISTRIBUTION FILTER (STEP B)
+        # --------------------------------------------------
+        # Check if market is expanding after structure event (AFTER retracement, BEFORE 1M confirmation)
+        if self._resampled_data is not None:
+            data_15m = self._resampled_data.get('15M')
+            if data_15m is not None and not data_15m.empty:
+                # Find event index in 15M data
+                event_timestamp = signal.timestamp
+                # Get data up to and including the event
+                data_15m_up_to_event = data_15m.loc[data_15m.index <= event_timestamp]
+                
+                if len(data_15m_up_to_event) > 0:
+                    # Find the index of the event candle (last candle <= event timestamp)
+                    event_index = len(data_15m_up_to_event) - 1
+                    
+                    # Get ATR for expansion check
+                    atr_15m = None
+                    atr_series = self.risk_manager.calculate_atr(data_15m_up_to_event)
+                    if len(atr_series) > 0 and not pd.isna(atr_series.iloc[-1]):
+                        atr_15m = atr_series.iloc[-1]
+                    
+                    # Fallback to 1M ATR if 15M not available
+                    if atr_15m is None:
+                        atr_1m_series = self.risk_manager.calculate_atr(data_1m)
+                        if len(atr_1m_series) > 0 and not pd.isna(atr_1m_series.iloc[-1]):
+                            atr_15m = atr_1m_series.iloc[-1]
+                    
+                    if atr_15m is not None and atr_15m > 0:
+                        # Check expansion using full 15M dataframe (need future candles)
+                        # For point-in-time, we need to use data up to current execution time
+                        # But for execute_trade, we can use all available data
+                        is_expanding = self.is_market_expanding(data_15m, event_index, atr_15m)
+                        
+                        if not is_expanding:
+                            self.stats['rejected_distribution'] += 1
+                            print("[REJECT] REJECTED: Market not expanding (Distribution/Chop)")
+                            # Store context for debugging
+                            if signal.context is None:
+                                signal.context = {}
+                            signal.context["market_phase"] = "DISTRIBUTION"
+                            return None
+                        else:
+                            # Store context for debugging
+                            if signal.context is None:
+                                signal.context = {}
+                            signal.context["market_phase"] = "EXPANSION"
 
         # Wait for 1M confirmation
         if not self.confirm_1m_signal(data_1m, signal.direction, signal.timestamp, signal.event_type):
@@ -962,6 +1068,55 @@ class MultiTimeframeTradingExecutor:
                         f"BodyRatio={body_ratio:.2f}, Required={self.MIN_BOS_BODY_RATIO:.2f}"
                     )
                     return None
+
+        # --------------------------------------------------
+        # EXPANSION vs DISTRIBUTION FILTER (STEP B)
+        # --------------------------------------------------
+        # Check if market is expanding after structure event (AFTER retracement, BEFORE 1M confirmation)
+        if self._resampled_data is not None:
+            data_15m = self._resampled_data.get('15M')
+            if data_15m is not None and not data_15m.empty:
+                # Get 15M data up to current time only (point-in-time)
+                data_15m_current = data_15m.loc[data_15m.index <= current_time]
+                
+                # Find event index in 15M data
+                event_timestamp = signal.timestamp
+                # Get data up to and including the event
+                data_15m_up_to_event = data_15m_current.loc[data_15m_current.index <= event_timestamp]
+                
+                if len(data_15m_up_to_event) > 0:
+                    # Find the index in the current data (point-in-time)
+                    event_index = len(data_15m_up_to_event) - 1
+                    
+                    # Get ATR for expansion check
+                    atr_15m = None
+                    atr_series = self.risk_manager.calculate_atr(data_15m_up_to_event)
+                    if len(atr_series) > 0 and not pd.isna(atr_series.iloc[-1]):
+                        atr_15m = atr_series.iloc[-1]
+                    
+                    # Fallback to 1M ATR if 15M not available
+                    if atr_15m is None:
+                        atr_1m_series = self.risk_manager.calculate_atr(data_1m_current)
+                        if len(atr_1m_series) > 0 and not pd.isna(atr_1m_series.iloc[-1]):
+                            atr_15m = atr_1m_series.iloc[-1]
+                    
+                    if atr_15m is not None and atr_15m > 0:
+                        # Check expansion using point-in-time data only
+                        is_expanding = self.is_market_expanding(data_15m_current, event_index, atr_15m)
+                        
+                        if not is_expanding:
+                            self.stats['rejected_distribution'] += 1
+                            print("[REJECT] REJECTED: Market not expanding (Distribution/Chop)")
+                            # Store context for debugging
+                            if signal.context is None:
+                                signal.context = {}
+                            signal.context["market_phase"] = "DISTRIBUTION"
+                            return None
+                        else:
+                            # Store context for debugging
+                            if signal.context is None:
+                                signal.context = {}
+                            signal.context["market_phase"] = "EXPANSION"
 
         # CRITICAL FIX: Get the actual entry price from 1M confirmation candle
         confirmation_candle = self._get_confirmation_candle_price(data_1m_current, signal.direction, signal.timestamp, current_time, signal.event_type)
@@ -1455,7 +1610,8 @@ class MultiTimeframeTradingExecutor:
             'processed_candles': 0,
             'bos_rejected_displacement': 0,  # Track BOS rejections by displacement
             'bos_rejected_body_ratio': 0,     # Track BOS rejections by body ratio
-            'bos_rejected_other': 0           # Track other BOS rejections
+            'bos_rejected_other': 0,          # Track other BOS rejections
+            'rejected_distribution': 0        # Track expansion/distribution filter rejections
         }
 
         results = {
