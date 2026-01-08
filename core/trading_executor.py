@@ -88,7 +88,7 @@ class MultiTimeframeTradingExecutor:
 
         # --- BOS FOLLOW-THROUGH PARAMETERS ---
         self.MIN_BOS_DISPLACEMENT_ATR = 0.5   # conservative, can tune later
-        self.MIN_BOS_BODY_RATIO = 0.6         # body / candle range
+        self.MIN_BOS_BODY_RATIO = 0.45        # FIX #2: Reduced from 0.60 to 0.45 (XAUUSD has wicks)
 
         # Latest 1H trend strength (0–1, based on slope/vol); used for soft gating
         self._last_trend_strength_1h: float = 1.0
@@ -144,12 +144,27 @@ class MultiTimeframeTradingExecutor:
             'retracement_reject_expired': 0,
             'retracement_reject_too_shallow': 0,
             'retracement_reject_too_deep': 0,
-            'retracement_reject_no_reversal': 0
+            'retracement_reject_no_reversal': 0,
+            # FIX #3: 1M Confirmation debug counters
+            '1m_confirm_window_empty': 0,
+            '1m_confirm_window_expired': 0,
+            '1m_confirm_no_displacement': 0,
+            '1m_confirm_displacement_found': 0
         }
         
         # --- RETRACEMENT WINDOW STATE (STEP 1) ---
         self._pending_choch: Dict | None = None  # Track pending CHOCH awaiting retracement
         self._retracement_window_candles: int = 12  # 12 x 15M = 3 hours window
+        
+        # --- STEP 7: 1M CONFIRMATION WINDOW PARAMETERS ---
+        # FIX: Extended from 12 to 30 minutes to allow for 15M candle iteration rate
+        # (each 15M iteration = 15 minutes, so window must span at least 2 iterations)
+        self.ONE_M_CONFIRM_WINDOW: int = 30  # 30 minutes (30 x 1M candles)
+        self.MIN_DISPLACEMENT_ATR: float = 0.3  # Reduced from 0.4 to 0.3 for XAUUSD
+        self.MIN_BODY_RATIO_1M: float = 0.45  # Reduced from 0.5 to 0.45 for XAUUSD wicks
+        
+        # --- FIX #1: Pending signals for asynchronous 1M confirmation ---
+        self._pending_signals: List[Dict] = []  # Signals awaiting 1M confirmation
         
         # DEBUG: Confirm executor persistence
         print("Executor initialized", id(self))
@@ -1358,14 +1373,19 @@ class MultiTimeframeTradingExecutor:
                 actual_entry_price = signal.price  # Fallback to signal price
         else:
             # CRITICAL FIX: Get the actual entry price from 1M confirmation candle
-            confirmation_candle = self._get_confirmation_candle_price(data_1m_current, signal.direction, signal.timestamp, current_time, signal.event_type)
+            # STEP 7: Use retracement confirmation time (current_time when retracement passed) as entry_time
+            # NOT signal.timestamp (which is the original event time, could be hours earlier)
+            retracement_time = current_time  # This is when retracement was confirmed
+            
+            confirmation_candle = self._get_confirmation_candle_price(data_1m_current, signal.direction, retracement_time, current_time, signal.event_type)
             if confirmation_candle is None:
                 return None
             
             actual_entry_price = confirmation_candle['Close']  # Use close of confirmation candle
             
             # Wait for 1M confirmation with current data only
-            if not self.confirm_1m_signal_point_in_time(data_1m_current, signal.direction, signal.timestamp, current_time, signal.event_type):
+            # STEP 7: Window starts from retracement confirmation time, not original event time
+            if not self.confirm_1m_signal_point_in_time(data_1m_current, signal.direction, retracement_time, current_time, signal.event_type):
                 return None
         
         # Calculate ATR-based stops using RiskManager consistently
@@ -1587,124 +1607,115 @@ class MultiTimeframeTradingExecutor:
                                        current_time: pd.Timestamp,
                                        event_type: str = "BOS") -> bool:
         """
-        REDEFINED: Execution-grade 1M confirmation - ANY ONE condition passes
+        STEP 7: Window-based, stateful, sequential 1M confirmation
         
-        Conditions (ANY ONE):
-        1. Strong impulse candle (body ≥ 50%)
-        2. Momentum continuation (2 consecutive closes in direction)
-        3. Rejection wick at retracement level
-        4. No opposite BOS in last N candles (passive confirmation)
+        After a valid 15M retracement:
+        1. Price often ranges on 1M (liquidity sweep)
+        2. THEN displacement happens
+        
+        Logic:
+        - Window-based: Check next 12 minutes (12 x 1M candles)
+        - Stateful: Track liquidity sweep first, then displacement
+        - Sequential: Liquidity → Displacement → Entry
         
         Args:
             data_1m_current: 1M data up to current time only
             signal_direction: "BUY" or "SELL"
-            entry_time: Timestamp of the entry signal
+            entry_time: Timestamp of the entry signal (15M retracement time)
             current_time: Current timestamp
             event_type: "BOS" or "CHOCH"
             
         Returns:
-            True if ANY ONE confirmation condition is met, False otherwise
+            True if displacement detected within window, False otherwise
         """
         if data_1m_current.empty or len(data_1m_current) < 20:
             return False
         
-        # Get the first 1M candle after entry time but before current time
-        future_candles = data_1m_current[
+        # Calculate ATR for 1M
+        atr_series = self.risk_manager.calculate_atr(data_1m_current)
+        if atr_series is None or len(atr_series) == 0 or pd.isna(atr_series.iloc[-1]):
+            return False
+        
+        atr_1m = atr_series.iloc[-1]
+        
+        # Get 1M candles in the confirmation window (12 minutes after entry_time)
+        window_end = entry_time + pd.Timedelta(minutes=self.ONE_M_CONFIRM_WINDOW)
+        
+        # Get candles in window (after entry_time, up to window_end or current_time, whichever is earlier)
+        window_candles = data_1m_current[
             (data_1m_current.index > entry_time) & 
-            (data_1m_current.index <= current_time)
+            (data_1m_current.index <= min(window_end, current_time))
         ]
-        if future_candles.empty:
+        
+        if window_candles.empty:
             return False
         
-        next_candle = future_candles.iloc[0]
-        
-        # Calculate candle metrics
-        candle_range = next_candle['High'] - next_candle['Low']
-        body_size = abs(next_candle['Close'] - next_candle['Open'])
-        body_ratio = body_size / candle_range if candle_range > 0 else 0
-        
-        # Direction confirmation
-        is_green = next_candle['Close'] > next_candle['Open']
-        is_red = next_candle['Close'] < next_candle['Open']
-        
-        # --- CONDITION 1: Strong impulse candle (body ≥ 50%) ---
-        condition_1_strong_impulse = False
-        if signal_direction == "BUY":
-            condition_1_strong_impulse = is_green and body_ratio >= 0.5
-        elif signal_direction == "SELL":
-            condition_1_strong_impulse = is_red and body_ratio >= 0.5
-        
-        # --- CONDITION 2: Momentum continuation (2 consecutive closes in direction) ---
-        condition_2_momentum = False
-        if len(future_candles) >= 2:
-            candle_1 = future_candles.iloc[0]
-            candle_2 = future_candles.iloc[1]
-            if signal_direction == "BUY":
-                condition_2_momentum = (candle_1['Close'] > candle_1['Open'] and 
-                                        candle_2['Close'] > candle_2['Open'] and
-                                        candle_2['Close'] > candle_1['Close'])
-            elif signal_direction == "SELL":
-                condition_2_momentum = (candle_1['Close'] < candle_1['Open'] and 
-                                       candle_2['Close'] < candle_2['Open'] and
-                                       candle_2['Close'] < candle_1['Close'])
-        
-        # --- CONDITION 3: Rejection wick at retracement level ---
-        condition_3_rejection = False
-        if signal_direction == "BUY":
-            # Lower wick should be significant (rejection of lower prices)
-            lower_wick = min(next_candle['Open'], next_candle['Close']) - next_candle['Low']
-            upper_wick = next_candle['High'] - max(next_candle['Open'], next_candle['Close'])
-            if candle_range > 0:
-                lower_wick_ratio = lower_wick / candle_range
-                # Strong rejection: lower wick > 30% of range, upper wick < 20%
-                condition_3_rejection = lower_wick_ratio > 0.3 and (upper_wick / candle_range) < 0.2
-        elif signal_direction == "SELL":
-            # Upper wick should be significant (rejection of higher prices)
-            upper_wick = next_candle['High'] - max(next_candle['Open'], next_candle['Close'])
-            lower_wick = min(next_candle['Open'], next_candle['Close']) - next_candle['Low']
-            if candle_range > 0:
-                upper_wick_ratio = upper_wick / candle_range
-                # Strong rejection: upper wick > 30% of range, lower wick < 20%
-                condition_3_rejection = upper_wick_ratio > 0.3 and (lower_wick / candle_range) < 0.2
-        
-        # --- CONDITION 4: No opposite BOS in last N candles (passive confirmation) ---
-        condition_4_no_opposite = True  # Default to True (no opposite BOS found)
-        recent_1m = data_1m_current[data_1m_current.index < next_candle.name].tail(20)
-        if len(recent_1m) >= 5:
-            swings_high, swings_low = detect_swing_points(recent_1m, window=3)
-            if signal_direction == "BUY":
-                # Check if there's a bearish BOS (break of swing low) in recent candles
-                if swings_low:
-                    recent_low = swings_low[-1][1]
-                    # Check if price broke below recent low (opposite BOS)
-                    if next_candle['Low'] < recent_low:
-                        condition_4_no_opposite = False
-            elif signal_direction == "SELL":
-                # Check if there's a bullish BOS (break of swing high) in recent candles
-                if swings_high:
-                    recent_high = swings_high[-1][1]
-                    # Check if price broke above recent high (opposite BOS)
-                    if next_candle['High'] > recent_high:
-                        condition_4_no_opposite = False
-        
-        # --- ANY ONE condition passes ---
-        if condition_1_strong_impulse or condition_2_momentum or condition_3_rejection or condition_4_no_opposite:
-            if self.debug:
-                reasons = []
-                if condition_1_strong_impulse:
-                    reasons.append("strong_impulse")
-                if condition_2_momentum:
-                    reasons.append("momentum")
-                if condition_3_rejection:
-                    reasons.append("rejection")
-                if condition_4_no_opposite:
-                    reasons.append("no_opposite_BOS")
-                print(f"OK 1M CONFIRM ({event_type}): {', '.join(reasons)} - {next_candle.name}")
-            return True
-        else:
-            if self.debug:
-                print(f"REJECT 1M ({event_type}): no confirmation conditions met - {next_candle.name}")
+        # Check if window expired
+        if current_time > window_end:
+            # Window expired - no confirmation
+            if hasattr(self, 'debug') and self.debug:
+                print(f"    1M CONFIRM REJECTED: Window expired ({self.ONE_M_CONFIRM_WINDOW} minutes)")
             return False
+        
+        # --- STEP 7: Sequential Check ---
+        # Phase 1: Check for liquidity sweep (optional - price ranges/consolidates)
+        liquidity_swept = False
+        if len(window_candles) >= 3:
+            # Simple liquidity check: price made a wick beyond recent range
+            recent_high = window_candles['High'].max()
+            recent_low = window_candles['Low'].min()
+            recent_range = recent_high - recent_low
+            
+            # If price made a significant wick (liquidity sweep), mark it
+            for _, candle in window_candles.iterrows():
+                if signal_direction == "BUY":
+                    # Bullish: check for lower wick (swept liquidity below)
+                    lower_wick = min(candle['Open'], candle['Close']) - candle['Low']
+                    if lower_wick > 0.3 * recent_range:
+                        liquidity_swept = True
+                        break
+                else:  # SELL
+                    # Bearish: check for upper wick (swept liquidity above)
+                    upper_wick = candle['High'] - max(candle['Open'], candle['Close'])
+                    if upper_wick > 0.3 * recent_range:
+                        liquidity_swept = True
+                        break
+        
+        # Phase 2: Check for displacement (REQUIRED for confirmation)
+        # Displacement = abs(candle.close - candle.open) >= 0.4 * ATR_1M
+        # AND body_ratio >= 0.5
+        displacement_detected = False
+        
+        for _, candle in window_candles.iterrows():
+            candle_range = candle['High'] - candle['Low']
+            if candle_range == 0:
+                continue
+            
+            body_size = abs(candle['Close'] - candle['Open'])
+            body_ratio = body_size / candle_range
+            
+            # Calculate displacement
+            displacement = body_size
+            
+            # Check displacement threshold
+            if displacement >= self.MIN_DISPLACEMENT_ATR * atr_1m:
+                # Check body ratio
+                if body_ratio >= self.MIN_BODY_RATIO_1M:
+                    # Check direction alignment
+                    is_green = candle['Close'] > candle['Open']
+                    is_red = candle['Close'] < candle['Open']
+                    
+                    if (signal_direction == "BUY" and is_green) or (signal_direction == "SELL" and is_red):
+                        displacement_detected = True
+                        if hasattr(self, 'debug') and self.debug:
+                            print(f"    1M CONFIRM PASSED: Displacement={displacement:.2f} (≥{self.MIN_DISPLACEMENT_ATR * atr_1m:.2f}), BodyRatio={body_ratio:.2f}, LiquiditySwept={liquidity_swept}")
+                        break
+        
+        if not displacement_detected:
+            if hasattr(self, 'debug') and self.debug:
+                print(f"    1M CONFIRM REJECTED: No displacement detected in {len(window_candles)} candles")
+        
+        return displacement_detected
     
     def monitor_open_trades_point_in_time(self, 
                                         data_1m_current: pd.DataFrame,
@@ -1840,8 +1851,16 @@ class MultiTimeframeTradingExecutor:
             'retracement_reject_expired': 0,
             'retracement_reject_too_shallow': 0,
             'retracement_reject_too_deep': 0,
-            'retracement_reject_no_reversal': 0
+            'retracement_reject_no_reversal': 0,
+            # FIX #3: 1M Confirmation debug counters
+            '1m_confirm_window_empty': 0,
+            '1m_confirm_window_expired': 0,
+            '1m_confirm_no_displacement': 0,
+            '1m_confirm_displacement_found': 0
         }
+        
+        # FIX #1: Reset pending signals
+        self._pending_signals = []
 
         results = {
             'signals_generated': 0,
@@ -1943,17 +1962,43 @@ class MultiTimeframeTradingExecutor:
                         
                         print(f"    Signal generated: {signal.direction} (entry price will be determined at execution)")
                         
-                        # STEP 5: Execute trade with historical 1M data only
-                        trade = self.execute_trade_point_in_time(signal, 10000, hist_1m, current_timestamp)
-                        
-                        if trade:
-                            results['trades_executed'] += 1
-                            self.stats['confirmed_1m_events'] += 1
-                            print(f"    Trade executed: {trade.position_size:.2f} units")
-                        else:
-                            print("    Waiting for 1M confirmation...")
+                        # FIX #1: Add to pending signals for ASYNCHRONOUS 1M confirmation
+                        # Don't check 1M immediately - add to pending and check on subsequent candles
+                        pending_signal = {
+                            'signal': signal,
+                            'retracement_time': current_timestamp,
+                            'window_end': current_timestamp + pd.Timedelta(minutes=self.ONE_M_CONFIRM_WINDOW),
+                            'trend_1h': trend_1h
+                        }
+                        self._pending_signals.append(pending_signal)
+                        print(f"    Signal added to pending (1M confirmation window: {self.ONE_M_CONFIRM_WINDOW} minutes)")
                     else:
                         print("    Waiting for retracement confirmation...")
+            
+            # FIX #1: Process pending signals for 1M confirmation (ASYNCHRONOUS)
+            if self._pending_signals:
+                for pending in self._pending_signals[:]:  # Copy to avoid modification during iteration
+                    signal = pending['signal']
+                    retracement_time = pending['retracement_time']
+                    window_end = pending['window_end']
+                    
+                    # Check if window expired
+                    if current_timestamp > window_end:
+                        print(f"    1M CONFIRM EXPIRED: Signal from {retracement_time} - window ended")
+                        self.stats['1m_confirm_window_expired'] += 1
+                        self._pending_signals.remove(pending)
+                        continue
+                    
+                    # Try 1M confirmation with current 1M data
+                    trade = self.execute_trade_point_in_time(signal, 10000, hist_1m, current_timestamp)
+                    
+                    if trade:
+                        results['trades_executed'] += 1
+                        self.stats['confirmed_1m_events'] += 1
+                        self.stats['1m_confirm_displacement_found'] += 1
+                        print(f"    Trade executed: {trade.position_size:.2f} units (1M confirmation passed)")
+                        self._pending_signals.remove(pending)
+                    # If not confirmed, keep in pending for next iteration
             
             # STEP 6: Monitor open trades with current price from the loop
             current_1m_data = data_1m.loc[data_1m.index <= current_timestamp]

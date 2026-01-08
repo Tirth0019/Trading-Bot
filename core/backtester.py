@@ -126,6 +126,13 @@ class IntegratedBacktester:
             # Expansion vs Distribution Filter Stats
             print(f"\n EXPANSION vs DISTRIBUTION FILTER STATS:")
             print(f"   Rejected (Distribution/Chop): {self.executor.stats.get('rejected_distribution', 0)}")
+            
+            # 1M Confirmation Debug Stats (FIX #3)
+            print(f"\n 1M CONFIRMATION DEBUG STATS:")
+            print(f"   Window Empty (no candles yet): {self.executor.stats.get('1m_confirm_window_empty', 0)}")
+            print(f"   Window Expired: {self.executor.stats.get('1m_confirm_window_expired', 0)}")
+            print(f"   No Displacement Found: {self.executor.stats.get('1m_confirm_no_displacement', 0)}")
+            print(f"   Displacement Found (passed): {self.executor.stats.get('1m_confirm_displacement_found', 0)}")
         
         # Calculate additional metrics
         if results['trades_closed'] > 0:
