@@ -68,6 +68,10 @@ class MarketStructureAnalyzer:
         
         # STRUCTURE STATE LOCK: Prevent multiple CHOCH detections per structure leg
         self._structure_state = None  # None, "CHOCH", or "BOS"
+        
+        # --- HARD STRUCTURE LOCK (LEG-BASED) ---
+        self._choch_locked: bool = False  # Lock CHOCH per structural leg
+        self._choch_direction: str | None = None  # Direction of locked CHOCH
 
     def get_confidence_threshold(self, event_type: str) -> float:
         """Get confidence threshold for specific event type"""
@@ -428,9 +432,10 @@ class MarketStructureAnalyzer:
             # --- CHOCH Detection (Priority over BOS) ---
             choch_detected = False
             
-            # 🔒 STRUCTURE STATE LOCK: Prevent CHOCH detection if already in CHOCH state
-            if self._structure_state == "CHOCH":
-                pass  # Skip CHOCH detection entirely - wait for BOS to reset
+            # --- HARD STRUCTURE LOCK (LEG-BASED) ---
+            # Block CHOCH generation if already locked for this structural leg
+            if self._choch_locked:
+                continue  # Skip CHOCH detection - locked until BOS unlocks
             else:
                 # CORRECTED CHOCH detection - only true trend reversals
                     if trend_before == "uptrend":
@@ -469,8 +474,10 @@ class MarketStructureAnalyzer:
                                     last_choch_level = last_hl.timestamp
                                     last_choch_direction = "Bearish"
                                     
-                                    # 🔒 LOCK STRUCTURE AFTER CHOCH
+                                    # 🔒 LOCK STRUCTURE LEG AFTER CHOCH
                                     self._structure_state = "CHOCH"
+                                    self._choch_locked = True
+                                    self._choch_direction = "Bearish"
                 
                     elif trend_before == "downtrend":
                         # Bullish CHOCH: Must be a new HH breaking above previous LH
@@ -508,8 +515,10 @@ class MarketStructureAnalyzer:
                                         last_choch_level = last_lh.timestamp
                                         last_choch_direction = "Bullish"
                                         
-                                        # 🔒 LOCK STRUCTURE AFTER CHOCH
+                                        # 🔒 LOCK STRUCTURE LEG AFTER CHOCH
                                         self._structure_state = "CHOCH"
+                                        self._choch_locked = True
+                                        self._choch_direction = "Bullish"
 
             # --- OPTIMIZED BOS Detection (Only if no CHOCH detected) ---
             if not choch_detected and current.swing_type == SwingType.HH:
@@ -539,8 +548,10 @@ class MarketStructureAnalyzer:
                                 description=f"Bullish BOS: HH @ {current.price:.2f} broke previous HH @ {prev_hh.price:.2f}"
                             ))
                             
-                            # 🔓 RESET STRUCTURE STATE ON BOS
+                            # 🔓 RESET STRUCTURE LEG ON BOS
                             self._structure_state = None
+                            self._choch_locked = False
+                            self._choch_direction = None
 
             elif not choch_detected and current.swing_type == SwingType.LL:
                 # Look for previous LL to break
@@ -569,8 +580,10 @@ class MarketStructureAnalyzer:
                                 description=f"Bearish BOS: LL @ {current.price:.2f} broke previous LL @ {prev_ll.price:.2f}"
                             ))
                             
-                            # 🔓 RESET STRUCTURE STATE ON BOS
+                            # 🔓 RESET STRUCTURE LEG ON BOS
                             self._structure_state = None
+                            self._choch_locked = False
+                            self._choch_direction = None
 
         # Return all events - let trading_executor handle duplicate filtering and decision-making
         return events

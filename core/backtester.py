@@ -95,6 +95,23 @@ class IntegratedBacktester:
         print(f" Winning Trades: {results['winning_trades']}")
         print(f" Losing Trades: {results['losing_trades']}")
         
+        # Retracement Debug Stats (STEP 5)
+        if hasattr(self.executor, 'stats'):
+            retrace_rejects = (
+                self.executor.stats.get('retracement_reject_no_expansion', 0) +
+                self.executor.stats.get('retracement_reject_expired', 0) +
+                self.executor.stats.get('retracement_reject_too_shallow', 0) +
+                self.executor.stats.get('retracement_reject_too_deep', 0) +
+                self.executor.stats.get('retracement_reject_no_reversal', 0)
+            )
+            if retrace_rejects > 0:
+                print(f"\n RETRACEMENT DEBUG STATS:")
+                print(f"   Rejected (No Expansion): {self.executor.stats.get('retracement_reject_no_expansion', 0)}")
+                print(f"   Rejected (Expired): {self.executor.stats.get('retracement_reject_expired', 0)}")
+                print(f"   Rejected (Too Shallow): {self.executor.stats.get('retracement_reject_too_shallow', 0)}")
+                print(f"   Rejected (Too Deep): {self.executor.stats.get('retracement_reject_too_deep', 0)}")
+                print(f"   Rejected (No Reversal): {self.executor.stats.get('retracement_reject_no_reversal', 0)}")
+        
         # BOS Follow-Through Filter Stats
         if hasattr(self.executor, 'stats'):
             print(f"\n BOS FOLLOW-THROUGH FILTER STATS:")

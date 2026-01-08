@@ -102,6 +102,11 @@ class MultiTimeframeTradingExecutor:
         self._last_choch_direction: str | None = None  # Direction of last CHOCH
         self._bos_confirmed_after_choch: bool = False  # True only after BOS confirms CHOCH direction
         
+        # --- CHOCH COOLDOWN STATE (Fix explosion loop) ---
+        self._last_choch_timestamp: pd.Timestamp | None = None  # Track last CHOCH timestamp for cooldown
+        self._last_choch_price: float | None = None  # Track last CHOCH price for cooldown
+        self.CHOCH_COOLDOWN_CANDLES: int = 6  # Cooldown window in 15M candles (4-8 range, using 6)
+        
         # Initialize analyzers
         self.market_analyzer = MarketStructureAnalyzer(config={"confidence_thresholds": {"BOS": confidence_threshold, "CHOCH": confidence_threshold}})
         self.risk_manager = RiskManager(risk_per_trade=risk_per_trade,
@@ -133,8 +138,18 @@ class MultiTimeframeTradingExecutor:
             'bos_rejected_displacement': 0,  # Track BOS rejections by displacement
             'bos_rejected_body_ratio': 0,     # Track BOS rejections by body ratio
             'bos_rejected_other': 0,         # Track other BOS rejections
-            'rejected_distribution': 0        # Track expansion/distribution filter rejections
+            'rejected_distribution': 0,       # Track expansion/distribution filter rejections
+            # Retracement debug counters (STEP 5)
+            'retracement_reject_no_expansion': 0,
+            'retracement_reject_expired': 0,
+            'retracement_reject_too_shallow': 0,
+            'retracement_reject_too_deep': 0,
+            'retracement_reject_no_reversal': 0
         }
+        
+        # --- RETRACEMENT WINDOW STATE (STEP 1) ---
+        self._pending_choch: Dict | None = None  # Track pending CHOCH awaiting retracement
+        self._retracement_window_candles: int = 12  # 12 x 15M = 3 hours window
         
         # DEBUG: Confirm executor persistence
         print("Executor initialized", id(self))
@@ -306,7 +321,14 @@ class MultiTimeframeTradingExecutor:
                                                    data_15m_current: pd.DataFrame,
                                                    current_time: pd.Timestamp) -> bool:
         """
-        Check retracement confirmation with point-in-time data only (NO LOOK-AHEAD BIAS)
+        RETRACEMENT WINDOW LOGIC: Check retracement within a time window, not immediately.
+        
+        STEP 1-5 Implementation:
+        - Window-based retracement (not immediate)
+        - Requires expansion before retracement
+        - Relaxed depth for XAUUSD (0.25-0.382)
+        - Checks for touch (not just close)
+        - Debug counters for failure reasons
         
         Args:
             event: Market event to check
@@ -324,83 +346,199 @@ class MultiTimeframeTradingExecutor:
             return False
         if data_15m_current.index.max() <= event.timestamp:
             return False
-            
-        # FIX 1: Removed outdated timestamp check that prevented retracement evaluation
-        # (check_retracement must check FUTURE candles, which requires current_time > event.timestamp)
-
-        # --- HARD BYPASS FOR STRONG BOS CONTINUATION ---
-        # 1️⃣ Normalize event type (Must use event.event_type as observed in codebase)
-        event_type_str = str(event.event_type).lower()
-        is_bos = "bos" in event_type_str
-
-        if is_bos:
-            trend_strength_1h = getattr(self, "_last_trend_strength_1h", 1.0)
-            # DEBUG PRINT
-            # print(f"DEBUG: BOS Check - Strength: {trend_strength_1h:.2f}, Conf: {event.confidence:.2f}")
-            if trend_strength_1h > 0.6 and event.confidence >= 0.6:
-                return True
-
-
         
-        # Get ATR for tolerance calculation using RiskManager
+        # --- STEP 3: Retracement requires expansion FIRST ---
+        # Check if expansion happened since CHOCH (required before retracement)
+        if event.event_type == EventType.CHOCH:
+            event_time = event.timestamp
+            # Get data after CHOCH
+            post_choch_data = data_15m_current[
+                (data_15m_current.index > event_time) & 
+                (data_15m_current.index <= current_time)
+            ]
+            
+            if len(post_choch_data) >= 6:
+                # Calculate ATR for expansion check
+                atr_series = self.risk_manager.calculate_atr(data_15m_current)
+                if atr_series is not None and len(atr_series) > 0 and not pd.isna(atr_series.iloc[-1]):
+                    atr_value = atr_series.iloc[-1]
+                    
+                    # Find event index in 15M data
+                    event_idx = None
+                    for idx, ts in enumerate(data_15m_current.index):
+                        if ts >= event_time:
+                            event_idx = idx
+                            break
+                    
+                    if event_idx is not None:
+                        # Check expansion (reuse existing expansion logic)
+                        is_expanding = self.is_market_expanding(data_15m_current, event_idx, atr_value)
+                        if not is_expanding:
+                            self.stats['retracement_reject_no_expansion'] += 1
+                            if hasattr(self, 'debug') and self.debug:
+                                print(f"    Retracement REJECTED: No expansion seen since CHOCH")
+                            return False
+        
+        # --- STEP 1: Window-based retracement (not immediate) ---
+        # Get ATR for tolerance calculation
         atr_series = self.risk_manager.calculate_atr(data_15m_current)
         if atr_series is None or len(atr_series) == 0 or pd.isna(atr_series.iloc[-1]):
             return False
         
         current_atr = atr_series.iloc[-1]
-        tolerance = current_atr * 1.2  # Increased from 0.5 to 1.2 ATR tolerance (REALISTIC)
+        
+        # --- STEP 2: Relaxed retracement depth for XAUUSD (0.25-0.382) ---
+        # For XAUUSD: shallow retraces are common, use 0.25-0.382 range
+        min_retrace_ratio = 0.25  # Minimum retracement depth
+        max_retrace_ratio = 0.382  # Maximum retracement depth (Fibonacci)
+        tolerance = current_atr * 0.5  # Reduced tolerance for gold (was 1.2)
         
         # Get recent price data after the event but before current time
         event_time = event.timestamp
-        recent_data = data_15m_current[
-            (data_15m_current.index > event_time) & 
-            (data_15m_current.index <= current_time)
-        ].tail(15)
         
-        if recent_data.empty:
+        # Calculate window expiry (12 candles = 3 hours)
+        event_idx = None
+        for idx, ts in enumerate(data_15m_current.index):
+            if ts >= event_time:
+                event_idx = idx
+                break
+        
+        if event_idx is None:
             return False
         
-        # Check if price has retraced to the broken level
+        # Check if window expired
+        current_idx = len(data_15m_current) - 1
+        candles_since = current_idx - event_idx
+        if candles_since > self._retracement_window_candles:
+            self.stats['retracement_reject_expired'] += 1
+            if hasattr(self, 'debug') and self.debug:
+                print(f"    Retracement REJECTED: Window expired ({candles_since}/{self._retracement_window_candles} candles)")
+            return False
+        
+        # Get candles in window
+        window_data = data_15m_current[
+            (data_15m_current.index > event_time) & 
+            (data_15m_current.index <= current_time)
+        ]
+        
+        if window_data.empty:
+            return False
+        
+        # --- BOS: Allow immediate continuation (bypass retracement for strong BOS) ---
+        if event.event_type == EventType.BOS:
+            trend_strength_1h = getattr(self, "_last_trend_strength_1h", 1.0)
+            if trend_strength_1h > 0.6 and event.confidence >= 0.6:
+                return True  # Strong BOS bypasses retracement
+        
+        # --- STEP 4: Check for touch (not just close) ---
+        # --- STEP 2: Validate retracement depth (25-38.2% for XAUUSD) ---
         broken_level = event.price
         retracement_found = False
         retracement_candle_idx = None
         
-        # Find retracement to broken level
-        for i, (_, candle) in enumerate(recent_data.iterrows()):
-            # Check if price has retraced to the broken level (within tolerance)
-            if (candle['Low'] <= broken_level + tolerance and 
-                candle['High'] >= broken_level - tolerance):
-                retracement_found = True
-                retracement_candle_idx = i
-                break
+        # Calculate move size from CHOCH to validate retracement depth
+        if event.direction in ["BUY", "Bullish"]:
+            # Bullish CHOCH: price broke up, calculate move up, then retrace down
+            move_size = window_data['High'].max() - broken_level
+            if move_size > 0:
+                min_retrace_target = broken_level + (move_size * min_retrace_ratio)
+                max_retrace_target = broken_level + (move_size * max_retrace_ratio)
+            else:
+                # No move yet, just check if price touched broken level
+                min_retrace_target = broken_level - tolerance
+                max_retrace_target = broken_level + tolerance
+        else:  # Bearish
+            # Bearish CHOCH: price broke down, calculate move down, then retrace up
+            move_size = broken_level - window_data['Low'].min()
+            if move_size > 0:
+                min_retrace_target = broken_level - (move_size * max_retrace_ratio)  # Max retrace = deeper
+                max_retrace_target = broken_level - (move_size * min_retrace_ratio)  # Min retrace = shallower
+            else:
+                # No move yet, just check if price touched broken level
+                min_retrace_target = broken_level - tolerance
+                max_retrace_target = broken_level + tolerance
+        
+        # Find retracement to target level (touch check, not close)
+        # For CHOCH: Price must retrace to broken level within 25-38.2% depth
+        for i, (_, candle) in enumerate(window_data.iterrows()):
+            # Check if price TOUCHED the retracement target (within tolerance)
+            # Touch means: Low <= level <= High (candle body touched level)
+            if event.direction in ["BUY", "Bullish"]:
+                # Bullish: price should retrace DOWN to broken level
+                # Check if low touched the retracement range
+                if (candle['Low'] <= max_retrace_target + tolerance and 
+                    candle['High'] >= min_retrace_target - tolerance):
+                    # Validate it's not too deep (below min_retrace_target)
+                    if candle['Low'] >= min_retrace_target - tolerance:
+                        retracement_found = True
+                        retracement_candle_idx = i
+                        break
+                    else:
+                        # Too deep retracement
+                        self.stats['retracement_reject_too_deep'] += 1
+                        if hasattr(self, 'debug') and self.debug:
+                            print(f"    Retracement REJECTED: Too deep (Low: {candle['Low']:.2f}, Target: {min_retrace_target:.2f}-{max_retrace_target:.2f})")
+            else:  # Bearish
+                # Bearish: price should retrace UP to broken level
+                # Check if high touched the retracement range
+                if (candle['High'] >= min_retrace_target - tolerance and 
+                    candle['Low'] <= max_retrace_target + tolerance):
+                    # Validate it's not too deep (above max_retrace_target)
+                    if candle['High'] <= max_retrace_target + tolerance:
+                        retracement_found = True
+                        retracement_candle_idx = i
+                        break
+                    else:
+                        # Too deep retracement
+                        self.stats['retracement_reject_too_deep'] += 1
+                        if hasattr(self, 'debug') and self.debug:
+                            print(f"    Retracement REJECTED: Too deep (High: {candle['High']:.2f}, Target: {min_retrace_target:.2f}-{max_retrace_target:.2f})")
         
         if not retracement_found:
+            if candles_since >= 3:  # Only log if we've had a few candles
+                self.stats['retracement_reject_too_shallow'] += 1
+                if hasattr(self, 'debug') and self.debug:
+                    print(f"    Retracement REJECTED: Too shallow or no touch yet ({candles_since} candles since event)")
             return False
         
-        # Now check for reversal candle pattern after retracement
-        if retracement_candle_idx is None or retracement_candle_idx >= len(recent_data) - 1:
+        # --- STEP 6: Reaction Confirmation (15M) - NOT Reversal ---
+        # CHOCH retracement doesn't guarantee reversal on 15M
+        # Reversal happens on 5M/1M - 15M just needs to show "level respect" (reaction)
+        
+        # Get the retracement candle and next candle for reaction check
+        if retracement_candle_idx is None:
             return False
         
-        # Get the candle after retracement for reversal confirmation
-        reversal_candle = recent_data.iloc[retracement_candle_idx + 1]
-        prev_candle = recent_data.iloc[retracement_candle_idx]
+        retracement_candle = window_data.iloc[retracement_candle_idx]
         
-        # Check for reversal patterns based on event direction
-        if event.direction in ["BUY", "Bullish"]:
-            # For bullish events, look for bullish reversal patterns
-            return self._is_bullish_reversal_candle(prev_candle, reversal_candle, broken_level, tolerance)
-        elif event.direction in ["SELL", "Bearish"]:
-            # For bearish events, look for bearish reversal patterns
-            return self._is_bearish_reversal_candle(prev_candle, reversal_candle, broken_level, tolerance)
+        # Check for reaction (not reversal) - just means "price respected the level"
+        reaction_confirmed = self._has_reaction_at_level(retracement_candle, broken_level, tolerance, event.direction)
+        
+        # If we have a next candle, also check it for reaction
+        if retracement_candle_idx < len(window_data) - 1:
+            next_candle = window_data.iloc[retracement_candle_idx + 1]
+            reaction_confirmed = reaction_confirmed or self._has_reaction_at_level(next_candle, broken_level, tolerance, event.direction)
+        
+        if not reaction_confirmed:
+            self.stats['retracement_reject_no_reversal'] += 1  # Keep counter name for consistency
+            if hasattr(self, 'debug') and self.debug:
+                print(f"    Retracement REJECTED: No reaction at level (price didn't respect level)")
+        
+        return reaction_confirmed
         
     def _is_trend_aligned_enhanced(self, event: MarketEvent, trend_1h: str, data_15m: pd.DataFrame) -> bool:
         """
         Enhanced trend alignment check: 1H + 15M trends must match.
-        Relaxed rules for sideways markets and CHOCH (reversal) events,
-        while keeping BOS (continuation) stricter but still allowing
-        slightly relaxed alignment.
+        
+        CRITICAL LOGIC:
+        - CHOCH (reversal): Skip HTF alignment - trend change expected
+        - BOS (continuation): Require HTF alignment - continuation trade
         """
-        # Analyze 15M trend using dual windows (12h = 48 bars, 24h = 96 bars)
+        # CRITICAL FIX: CHOCH bypasses HTF alignment (trend change signal)
+        if event.event_type == EventType.CHOCH:
+            return True  # Allow CHOCH to pass - alignment will confirm after BOS
+        
+        # BOS requires HTF alignment (continuation trade)
         if len(data_15m) < 20:
             return False
 
@@ -499,6 +637,81 @@ class MultiTimeframeTradingExecutor:
         return False
     
 
+    
+    def _has_reaction_at_level(self, candle: pd.Series, level: float, tolerance: float, direction: str) -> bool:
+        """
+        STEP 6: Check for reaction at level (15M) - NOT reversal.
+        
+        Reaction means "price respected the level" - any of:
+        - Long wick (rejection)
+        - Inside bar (consolidation)
+        - Small body (momentum slowdown)
+        - Failed continuation (price didn't break through)
+        
+        This is less strict than reversal - just checks if level was respected.
+        True reversal logic belongs in 1M confirmation.
+        
+        Args:
+            candle: Candle to check
+            level: Broken level (CHOCH/BOS level)
+            tolerance: Price tolerance
+            direction: Event direction ("BUY"/"Bullish" or "SELL"/"Bearish")
+            
+        Returns:
+            True if reaction is confirmed
+        """
+        # Check if candle is near the level
+        if not (candle['Low'] <= level + tolerance and candle['High'] >= level - tolerance):
+            return False
+        
+        candle_range = candle['High'] - candle['Low']
+        if candle_range == 0:
+            return False
+        
+        candle_body = abs(candle['Close'] - candle['Open'])
+        body_ratio = candle_body / candle_range
+        
+        # Calculate wick sizes
+        if candle['Close'] > candle['Open']:  # Bullish candle
+            upper_wick = candle['High'] - candle['Close']
+            lower_wick = candle['Open'] - candle['Low']
+        else:  # Bearish candle
+            upper_wick = candle['High'] - candle['Open']
+            lower_wick = candle['Close'] - candle['Low']
+        
+        upper_wick_ratio = upper_wick / candle_range if candle_range > 0 else 0
+        lower_wick_ratio = lower_wick / candle_range if candle_range > 0 else 0
+        
+        # Tier 1 - Reaction Conditions (ANY of these):
+        # 1. Long rejection wick (price rejected the level)
+        if direction in ["BUY", "Bullish"]:
+            # Bullish: long lower wick = rejection of lower prices
+            if lower_wick_ratio > 0.4:
+                return True
+        else:  # Bearish
+            # Bearish: long upper wick = rejection of higher prices
+            if upper_wick_ratio > 0.4:
+                return True
+        
+        # 2. Small body (momentum slowdown - indecisive at level)
+        if body_ratio < 0.3:
+            return True
+        
+        # 3. Inside bar (consolidation at level)
+        # Note: This requires previous candle, so we'll check in the calling function
+        # For now, small body is a proxy for inside bar behavior
+        
+        # 4. Failed continuation (price touched level but didn't break through)
+        if direction in ["BUY", "Bullish"]:
+            # Bullish: price touched level from above but didn't break below
+            if candle['Low'] <= level + tolerance and candle['Close'] >= level - tolerance:
+                return True
+        else:  # Bearish
+            # Bearish: price touched level from below but didn't break above
+            if candle['High'] >= level - tolerance and candle['Close'] <= level + tolerance:
+                return True
+        
+        return False
     
     def _is_bullish_reversal_candle(self, prev_candle: pd.Series, reversal_candle: pd.Series, 
                                   broken_level: float, tolerance: float) -> bool:
@@ -926,6 +1139,9 @@ class MultiTimeframeTradingExecutor:
             self._last_major_event_type = None
             self._last_major_event_direction = None
             self._last_choch_level = None  # Reset CHOCH level on BOS
+            # Reset CHOCH cooldown on BOS
+            self._last_choch_price = None
+            self._last_choch_timestamp = None
             
             # --- CHOCH-BOS CONFIRMATION: BOS confirms CHOCH direction ---
             if self._last_choch_direction == signal.direction:
@@ -1118,16 +1334,39 @@ class MultiTimeframeTradingExecutor:
                                 signal.context = {}
                             signal.context["market_phase"] = "EXPANSION"
 
-        # CRITICAL FIX: Get the actual entry price from 1M confirmation candle
-        confirmation_candle = self._get_confirmation_candle_price(data_1m_current, signal.direction, signal.timestamp, current_time, signal.event_type)
-        if confirmation_candle is None:
-            return None
+        # --- CHANGE #2: Allow BOS-only entries to bypass 1M (selectively) ---
+        # Rule: If BOS confidence ≥ 0.75 and Expansion = TRUE, allow direct entry WITHOUT 1M confirmation
+        bypass_1m_confirmation = False
+        if signal.event_type == EventType.BOS.value:
+            if signal.confidence >= 0.75:
+                # Check if expansion filter passed (market_phase should be "EXPANSION")
+                if signal.context and signal.context.get("market_phase") == "EXPANSION":
+                    bypass_1m_confirmation = True
+                    if self.debug:
+                        print(f"[BYPASS] BOS confidence {signal.confidence:.2f} + Expansion = TRUE -> Skipping 1M confirmation")
         
-        actual_entry_price = confirmation_candle['Close']  # Use close of confirmation candle
-        
-        # Wait for 1M confirmation with current data only
-        if not self.confirm_1m_signal_point_in_time(data_1m_current, signal.direction, signal.timestamp, current_time, signal.event_type):
-            return None
+        # Get entry price - either from 1M confirmation or use signal price if bypassing
+        if bypass_1m_confirmation:
+            # Use signal price directly (or first available 1M candle close)
+            future_candles = data_1m_current[
+                (data_1m_current.index > signal.timestamp) & 
+                (data_1m_current.index <= current_time)
+            ]
+            if not future_candles.empty:
+                actual_entry_price = future_candles.iloc[0]['Close']
+            else:
+                actual_entry_price = signal.price  # Fallback to signal price
+        else:
+            # CRITICAL FIX: Get the actual entry price from 1M confirmation candle
+            confirmation_candle = self._get_confirmation_candle_price(data_1m_current, signal.direction, signal.timestamp, current_time, signal.event_type)
+            if confirmation_candle is None:
+                return None
+            
+            actual_entry_price = confirmation_candle['Close']  # Use close of confirmation candle
+            
+            # Wait for 1M confirmation with current data only
+            if not self.confirm_1m_signal_point_in_time(data_1m_current, signal.direction, signal.timestamp, current_time, signal.event_type):
+                return None
         
         # Calculate ATR-based stops using RiskManager consistently
         stop_loss = 0.0
@@ -1202,6 +1441,9 @@ class MultiTimeframeTradingExecutor:
             self._last_major_event_type = None
             self._last_major_event_direction = None
             self._last_choch_level = None  # Reset CHOCH level on BOS
+            # Reset CHOCH cooldown on BOS
+            self._last_choch_price = None
+            self._last_choch_timestamp = None
             
             # --- CHOCH-BOS CONFIRMATION: BOS confirms CHOCH direction ---
             if self._last_choch_direction == signal.direction:
@@ -1280,19 +1522,58 @@ class MultiTimeframeTradingExecutor:
                     if confirmation_candle['Close'] < recent_low:
                         has_micro_bos = True
         
-        # Verify Confirmation
-        if event_type == "CHOCH":
+        # Verify Confirmation using new ANY ONE logic
+        # --- CONDITION 1: Strong impulse candle (body ≥ 50%) ---
+        condition_1_strong_impulse = False
+        if signal_direction == "BUY":
+            condition_1_strong_impulse = is_green and body_ratio >= 0.5
+        elif signal_direction == "SELL":
+            condition_1_strong_impulse = is_red and body_ratio >= 0.5
+        
+        # --- CONDITION 2: Momentum continuation (2 consecutive closes in direction) ---
+        condition_2_momentum = False
+        future_candles = data_1m_current[data_1m_current.index > confirmation_candle.name]
+        if len(future_candles) >= 1:
+            candle_2 = future_candles.iloc[0]
             if signal_direction == "BUY":
-                is_momentum = is_green and (body_ratio >= 0.3 or volume_confirmation)
-                is_confirmed = is_momentum or has_micro_bos
+                condition_2_momentum = (is_green and candle_2['Close'] > candle_2['Open'] and
+                                        candle_2['Close'] > confirmation_candle['Close'])
             elif signal_direction == "SELL":
-                is_momentum = is_red and (body_ratio >= 0.3 or volume_confirmation)
-                is_confirmed = is_momentum or has_micro_bos
-        else: # BOS
+                condition_2_momentum = (is_red and candle_2['Close'] < candle_2['Open'] and
+                                       candle_2['Close'] < confirmation_candle['Close'])
+        
+        # --- CONDITION 3: Rejection wick at retracement level ---
+        condition_3_rejection = False
+        candle_range = confirmation_candle['High'] - confirmation_candle['Low']
+        if signal_direction == "BUY":
+            lower_wick = min(confirmation_candle['Open'], confirmation_candle['Close']) - confirmation_candle['Low']
+            upper_wick = confirmation_candle['High'] - max(confirmation_candle['Open'], confirmation_candle['Close'])
+            if candle_range > 0:
+                lower_wick_ratio = lower_wick / candle_range
+                condition_3_rejection = lower_wick_ratio > 0.3 and (upper_wick / candle_range) < 0.2
+        elif signal_direction == "SELL":
+            upper_wick = confirmation_candle['High'] - max(confirmation_candle['Open'], confirmation_candle['Close'])
+            lower_wick = min(confirmation_candle['Open'], confirmation_candle['Close']) - confirmation_candle['Low']
+            if candle_range > 0:
+                upper_wick_ratio = upper_wick / candle_range
+                condition_3_rejection = upper_wick_ratio > 0.3 and (lower_wick / candle_range) < 0.2
+        
+        # --- CONDITION 4: No opposite BOS in last N candles (passive confirmation) ---
+        condition_4_no_opposite = True  # Default to True
+        if len(recent_1m) >= 5:
             if signal_direction == "BUY":
-                is_confirmed = has_micro_bos
+                if swings_low:
+                    recent_low = swings_low[-1][1]
+                    if confirmation_candle['Low'] < recent_low:
+                        condition_4_no_opposite = False
             elif signal_direction == "SELL":
-                is_confirmed = has_micro_bos
+                if swings_high:
+                    recent_high = swings_high[-1][1]
+                    if confirmation_candle['High'] > recent_high:
+                        condition_4_no_opposite = False
+        
+        # ANY ONE condition passes
+        is_confirmed = condition_1_strong_impulse or condition_2_momentum or condition_3_rejection or condition_4_no_opposite
                 
         if not is_confirmed:
             return None
@@ -1306,7 +1587,13 @@ class MultiTimeframeTradingExecutor:
                                        current_time: pd.Timestamp,
                                        event_type: str = "BOS") -> bool:
         """
-        IMPROVED: Asymmetric 1M signal confirmation (Weaker for CHOCH, Stronger for BOS)
+        REDEFINED: Execution-grade 1M confirmation - ANY ONE condition passes
+        
+        Conditions (ANY ONE):
+        1. Strong impulse candle (body ≥ 50%)
+        2. Momentum continuation (2 consecutive closes in direction)
+        3. Rejection wick at retracement level
+        4. No opposite BOS in last N candles (passive confirmation)
         
         Args:
             data_1m_current: 1M data up to current time only
@@ -1316,7 +1603,7 @@ class MultiTimeframeTradingExecutor:
             event_type: "BOS" or "CHOCH"
             
         Returns:
-            True if confirmation is valid, False otherwise
+            True if ANY ONE confirmation condition is met, False otherwise
         """
         if data_1m_current.empty or len(data_1m_current) < 20:
             return False
@@ -1336,152 +1623,88 @@ class MultiTimeframeTradingExecutor:
         body_size = abs(next_candle['Close'] - next_candle['Open'])
         body_ratio = body_size / candle_range if candle_range > 0 else 0
         
-        # Volume filter
-        volume_confirmation = True
-        if 'Volume' in data_1m_current.columns and data_1m_current['Volume'].sum() > 0:
-            recent_volume = data_1m_current['Volume'].tail(20).mean()
-            volume_ratio = next_candle['Volume'] / recent_volume if recent_volume > 0 else 1
-            volume_confirmation = volume_ratio >= 1.1
-
-        # --- 1M DISPLACEMENT FILTER (CHOCH ONLY) ---
-        if event_type == "CHOCH":
-            # RE-INTRODUCED: 1M Displacement Logic
-            # Lookahead 8 minutes (candles) to measure momentum
-            
-            # Using data_1m_current: We need candles strictly AFTER the entry time.
-            # But point-in-time constraints mean we might not have all 8 candles yet if current_time is close to entry.
-            # However, logic dictates we should check what we have or wait? 
-            # Given instructions: "validate_choch_displacement ... if >= 0.6"
-            
-            # Get candles after entry
-            post_entry_candles = data_1m_current[data_1m_current.index > entry_time]
-            lookahead_limit = 8
-            
-            # If we don't have enough data yet, we might want to wait, or check what we have.
-            # Assuming we check what is available up to current_time (point-in-time correctness).
-            lookahead = post_entry_candles.iloc[:lookahead_limit] # Up to 8 candles
-            
-            # Only proceed if we have at least 1-2 candles to measure SOMETHING
-            if not lookahead.empty:
-                # Calculate ATR on 1M
-                atr_1m_series = self.risk_manager.calculate_atr(data_1m_current)
-                atr_1m = atr_1m_series.iloc[-1] if (atr_1m_series is not None and not atr_1m_series.empty) else 0.0
-                
-                if atr_1m > 0:
-                    max_move = 0.0
-                    entry_price_ref = next_candle['Open'] # Or use the signal price if available? 
-                    # The function signature has no price, but we have next_candle (the confirmation candle).
-                    # Better to use the Open of the first confirmation candle as proxy for "CHOCH Price" level 
-                    # or better yet, simply measure from the start of the move. 
-                    # User pseudo-code: "choch_price". 
-                    # Let's use the first available candle Open or Close.
-                    ref_price = next_candle['Open'] 
-                    
-                    if signal_direction == "BUY" or signal_direction == "Bullish":
-                        max_high = lookahead["High"].max()
-                        max_move = max_high - ref_price
-                    else:
-                        min_low = lookahead["Low"].min()
-                        max_move = ref_price - min_low
-                        
-                    displacement = max_move / atr_1m
-                    
-                    displacement = max_move / atr_1m
-                    
-                    # LOGGING as requested
-                    log_msg = [
-                        f"🔍 CHOCH @ {entry_time} | Dir: {signal_direction}",
-                        f"   ATR_1M: {atr_1m:.5f} | MaxMove: {max_move:.5f}",
-                        f"   Displacement: {displacement:.2f} (Req: 0.6)"
-                    ]
-                    
-                    # Write to file directly to bypass stdout issues
-                    try:
-                        with open("choch_debug.log", "a", encoding="utf-8") as f:
-                            for msg in log_msg:
-                                f.write(msg + "\n")
-                                print(msg) # Still print for console users
-                    except Exception:
-                        pass # Ignore file write errors
-                    
-                    if displacement >= 0.6:
-                         print("   Result: PASS ✅")
-                         with open("choch_debug.log", "a", encoding="utf-8") as f: f.write("   Result: PASS ✅\n")
-                    else:
-                         print("   Result: FAIL ❌")
-                         with open("choch_debug.log", "a", encoding="utf-8") as f: f.write("   Result: FAIL ❌\n")
-                         return False # Enforce filter
-        
         # Direction confirmation
         is_green = next_candle['Close'] > next_candle['Open']
         is_red = next_candle['Close'] < next_candle['Open']
         
-        # --- ASYMMETRIC LOGIC ---
+        # --- CONDITION 1: Strong impulse candle (body ≥ 50%) ---
+        condition_1_strong_impulse = False
+        if signal_direction == "BUY":
+            condition_1_strong_impulse = is_green and body_ratio >= 0.5
+        elif signal_direction == "SELL":
+            condition_1_strong_impulse = is_red and body_ratio >= 0.5
         
-        # Helper: Check for micro BOS (break of recent 1M swing)
-        has_micro_bos = False
-        # Get recent 1M data before the confirmation candle
-        recent_1m = data_1m_current[data_1m_current.index < next_candle.name].tail(30)
+        # --- CONDITION 2: Momentum continuation (2 consecutive closes in direction) ---
+        condition_2_momentum = False
+        if len(future_candles) >= 2:
+            candle_1 = future_candles.iloc[0]
+            candle_2 = future_candles.iloc[1]
+            if signal_direction == "BUY":
+                condition_2_momentum = (candle_1['Close'] > candle_1['Open'] and 
+                                        candle_2['Close'] > candle_2['Open'] and
+                                        candle_2['Close'] > candle_1['Close'])
+            elif signal_direction == "SELL":
+                condition_2_momentum = (candle_1['Close'] < candle_1['Open'] and 
+                                       candle_2['Close'] < candle_2['Open'] and
+                                       candle_2['Close'] < candle_1['Close'])
+        
+        # --- CONDITION 3: Rejection wick at retracement level ---
+        condition_3_rejection = False
+        if signal_direction == "BUY":
+            # Lower wick should be significant (rejection of lower prices)
+            lower_wick = min(next_candle['Open'], next_candle['Close']) - next_candle['Low']
+            upper_wick = next_candle['High'] - max(next_candle['Open'], next_candle['Close'])
+            if candle_range > 0:
+                lower_wick_ratio = lower_wick / candle_range
+                # Strong rejection: lower wick > 30% of range, upper wick < 20%
+                condition_3_rejection = lower_wick_ratio > 0.3 and (upper_wick / candle_range) < 0.2
+        elif signal_direction == "SELL":
+            # Upper wick should be significant (rejection of higher prices)
+            upper_wick = next_candle['High'] - max(next_candle['Open'], next_candle['Close'])
+            lower_wick = min(next_candle['Open'], next_candle['Close']) - next_candle['Low']
+            if candle_range > 0:
+                upper_wick_ratio = upper_wick / candle_range
+                # Strong rejection: upper wick > 30% of range, lower wick < 20%
+                condition_3_rejection = upper_wick_ratio > 0.3 and (lower_wick / candle_range) < 0.2
+        
+        # --- CONDITION 4: No opposite BOS in last N candles (passive confirmation) ---
+        condition_4_no_opposite = True  # Default to True (no opposite BOS found)
+        recent_1m = data_1m_current[data_1m_current.index < next_candle.name].tail(20)
         if len(recent_1m) >= 5:
             swings_high, swings_low = detect_swing_points(recent_1m, window=3)
-            
             if signal_direction == "BUY":
-                # Check for break of recent swing high
-                if swings_high:
-                    recent_high = swings_high[-1][1] # (timestamp, price)
-                    if next_candle['Close'] > recent_high:
-                        has_micro_bos = True
-                        
-            elif signal_direction == "SELL":
-                 # Check for break of recent swing low
+                # Check if there's a bearish BOS (break of swing low) in recent candles
                 if swings_low:
                     recent_low = swings_low[-1][1]
-                    if next_candle['Close'] < recent_low:
-                        has_micro_bos = True
+                    # Check if price broke below recent low (opposite BOS)
+                    if next_candle['Low'] < recent_low:
+                        condition_4_no_opposite = False
+            elif signal_direction == "SELL":
+                # Check if there's a bullish BOS (break of swing high) in recent candles
+                if swings_high:
+                    recent_high = swings_high[-1][1]
+                    # Check if price broke above recent high (opposite BOS)
+                    if next_candle['High'] > recent_high:
+                        condition_4_no_opposite = False
         
-        # CHOCH Logic: Allow if (Momentum OR Volume OR Micro BOS)
-        if event_type == "CHOCH":
-            if signal_direction == "BUY":
-                is_momentum = is_green and (body_ratio >= 0.3 or volume_confirmation)
-                if has_micro_bos:
-                    print(f"OK 1M CONFIRM (CHOCH): micro BOS - {next_candle.name}")
-                    return True
-                elif is_momentum:
-                    print(f"OK 1M CONFIRM (CHOCH): micro momentum - {next_candle.name}")
-                    return True
-                else:
-                    print(f"REJECT 1M REJECT (CHOCH) - {next_candle.name}")
-                    return False
-            elif signal_direction == "SELL":
-                is_momentum = is_red and (body_ratio >= 0.3 or volume_confirmation)
-                if has_micro_bos:
-                    print(f"OK 1M CONFIRM (CHOCH): micro BOS - {next_candle.name}")
-                    return True
-                elif is_momentum:
-                    print(f"OK 1M CONFIRM (CHOCH): micro momentum - {next_candle.name}")
-                    return True
-                else:
-                    print(f"REJECT 1M REJECT (CHOCH) - {next_candle.name}")
-                    return False
-
-        # BOS Logic: Require Micro BOS (Structure)
-        else: # BOS or others
-            if signal_direction == "BUY":
-                if has_micro_bos:
-                    print(f"OK 1M CONFIRM (BOS): micro BOS - {next_candle.name}")
-                    return True
-                else:
-                    print(f"REJECT 1M REJECT (BOS): no BOS - {next_candle.name}")
-                    return False
-            elif signal_direction == "SELL":
-                if has_micro_bos:
-                    print(f"OK 1M CONFIRM (BOS): micro BOS - {next_candle.name}")
-                    return True
-                else:
-                    print(f"REJECT 1M REJECT (BOS): no BOS - {next_candle.name}")
-                    return False
-
-        return False
+        # --- ANY ONE condition passes ---
+        if condition_1_strong_impulse or condition_2_momentum or condition_3_rejection or condition_4_no_opposite:
+            if self.debug:
+                reasons = []
+                if condition_1_strong_impulse:
+                    reasons.append("strong_impulse")
+                if condition_2_momentum:
+                    reasons.append("momentum")
+                if condition_3_rejection:
+                    reasons.append("rejection")
+                if condition_4_no_opposite:
+                    reasons.append("no_opposite_BOS")
+                print(f"OK 1M CONFIRM ({event_type}): {', '.join(reasons)} - {next_candle.name}")
+            return True
+        else:
+            if self.debug:
+                print(f"REJECT 1M ({event_type}): no confirmation conditions met - {next_candle.name}")
+            return False
     
     def monitor_open_trades_point_in_time(self, 
                                         data_1m_current: pd.DataFrame,
@@ -1611,7 +1834,13 @@ class MultiTimeframeTradingExecutor:
             'bos_rejected_displacement': 0,  # Track BOS rejections by displacement
             'bos_rejected_body_ratio': 0,     # Track BOS rejections by body ratio
             'bos_rejected_other': 0,          # Track other BOS rejections
-            'rejected_distribution': 0        # Track expansion/distribution filter rejections
+            'rejected_distribution': 0,       # Track expansion/distribution filter rejections
+            # Retracement debug counters (STEP 5)
+            'retracement_reject_no_expansion': 0,
+            'retracement_reject_expired': 0,
+            'retracement_reject_too_shallow': 0,
+            'retracement_reject_too_deep': 0,
+            'retracement_reject_no_reversal': 0
         }
 
         results = {
@@ -1690,14 +1919,8 @@ class MultiTimeframeTradingExecutor:
                     if (current_timestamp - event.timestamp).total_seconds() > 172800:
                          continue
                     
-                    # --- CHOCH DE-DUPLICATION BY BROKEN LEVEL ---
-                    # Prevent duplicate detections of the same structural break
-                    if event.event_type == EventType.CHOCH:
-                        last_level = getattr(self, "_last_choch_level", None)
-                        if last_level is not None and abs(last_level - event.price) < 0.0001:  # Same level (within 1 pip)
-                            print(f"     CHOCH de-duplicated (same level: {event.price:.5f})")
-                            continue
-                        self._last_choch_level = event.price
+                    # NOTE: CHOCH cooldown is now handled at structure generation level
+                    # in smart_money_concepts.py - no late-stage filtering needed here
                     
                     print(f"\n NEW {event.event_type.value} - {event.direction} entry at {current_timestamp}")
                     print(f"   Confidence: {event.confidence:.2f}")
