@@ -133,6 +133,10 @@ class IntegratedBacktester:
             print(f"   Window Expired: {self.executor.stats.get('1m_confirm_window_expired', 0)}")
             print(f"   No Displacement Found: {self.executor.stats.get('1m_confirm_no_displacement', 0)}")
             print(f"   Displacement Found (passed): {self.executor.stats.get('1m_confirm_displacement_found', 0)}")
+            
+            # Liquidity Sweep Unlock Stats
+            print(f"\n LIQUIDITY SWEEP UNLOCK STATS:")
+            print(f"   Structure Unlocks by Liquidity Sweep: {self.executor.stats.get('structure_unlock_liquidity', 0)}")
         
         # Calculate additional metrics
         if results['trades_closed'] > 0:

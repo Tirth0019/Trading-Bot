@@ -107,6 +107,12 @@ class MultiTimeframeTradingExecutor:
         self._last_choch_price: float | None = None  # Track last CHOCH price for cooldown
         self.CHOCH_COOLDOWN_CANDLES: int = 6  # Cooldown window in 15M candles (4-8 range, using 6)
         
+        # --- LIQUIDITY SWEEP STATE (CHOCH Unlock Mechanism) ---
+        self._last_liquidity_sweep_level: float | None = None   # Price level of last liquidity sweep
+        self._last_liquidity_sweep_time: pd.Timestamp | None = None  # Timestamp of last liquidity sweep
+        self._last_tracked_hh: float | None = None  # Track last HH for downtrend liquidity detection
+        self._last_tracked_ll: float | None = None  # Track last LL for uptrend liquidity detection
+        
         # Initialize analyzers
         self.market_analyzer = MarketStructureAnalyzer(config={"confidence_thresholds": {"BOS": confidence_threshold, "CHOCH": confidence_threshold}})
         self.risk_manager = RiskManager(risk_per_trade=risk_per_trade,
@@ -149,7 +155,9 @@ class MultiTimeframeTradingExecutor:
             '1m_confirm_window_empty': 0,
             '1m_confirm_window_expired': 0,
             '1m_confirm_no_displacement': 0,
-            '1m_confirm_displacement_found': 0
+            '1m_confirm_displacement_found': 0,
+            # Liquidity Sweep unlock counter
+            'structure_unlock_liquidity': 0
         }
         
         # --- RETRACEMENT WINDOW STATE (STEP 1) ---
@@ -935,8 +943,25 @@ class MultiTimeframeTradingExecutor:
         Returns:
             Executed trade or None if execution fails
         """
+        # --- LIQUIDITY SWEEP UNLOCK (BEFORE STRUCTURE LOCK CHECK) ---
+        # Check for new external liquidity sweep to unlock CHOCH structure
+        if self._resampled_data is not None:
+            data_15m = self._resampled_data.get('15M')
+            if data_15m is not None and not data_15m.empty:
+                # Get current 15M trend
+                trend_15m = self._select_trend_with_windows(
+                    data_15m.loc[data_15m.index <= signal.timestamp],
+                    windows=[30, 50, 70],
+                    swing_window=4
+                )
+                # Check and potentially unlock by liquidity sweep
+                self._check_and_unlock_by_liquidity_sweep(
+                    data_15m.loc[data_15m.index <= signal.timestamp],
+                    trend_15m
+                )
+        
         # --- HARD STRUCTURE LOCK (EXECUTION LEVEL) ---
-        # Rule: Only ONE CHOCH per structure leg. Must wait for BOS to unlock.
+        # Rule: Only ONE CHOCH per structure leg. Must wait for BOS or liquidity sweep to unlock.
         
         # NOTE: signal.event_type is a string ("BOS" or "CHOCH"), so we compare with .value
         if signal.event_type == EventType.CHOCH.value:
@@ -1189,8 +1214,25 @@ class MultiTimeframeTradingExecutor:
         Returns:
             Executed trade or None if execution fails
         """
+        # --- LIQUIDITY SWEEP UNLOCK (BEFORE STRUCTURE LOCK CHECK) ---
+        # Check for new external liquidity sweep to unlock CHOCH structure
+        if self._resampled_data is not None:
+            data_15m = self._resampled_data.get('15M')
+            if data_15m is not None and not data_15m.empty:
+                # Get 15M data up to current time (point-in-time safe)
+                data_15m_current = data_15m.loc[data_15m.index <= current_time]
+                if len(data_15m_current) > 0:
+                    # Get current 15M trend
+                    trend_15m = self._select_trend_with_windows(
+                        data_15m_current,
+                        windows=[30, 50, 70],
+                        swing_window=4
+                    )
+                    # Check and potentially unlock by liquidity sweep
+                    self._check_and_unlock_by_liquidity_sweep(data_15m_current, trend_15m)
+        
         # --- HARD STRUCTURE LOCK (EXECUTION LEVEL) ---
-        # Rule: Only ONE CHOCH per structure leg. Must wait for BOS to unlock.
+        # Rule: Only ONE CHOCH per structure leg. Must wait for BOS or liquidity sweep to unlock.
         
         # NOTE: signal.event_type is a string ("BOS" or "CHOCH"), so we compare with .value
         if signal.event_type == EventType.CHOCH.value:
@@ -1856,7 +1898,9 @@ class MultiTimeframeTradingExecutor:
             '1m_confirm_window_empty': 0,
             '1m_confirm_window_expired': 0,
             '1m_confirm_no_displacement': 0,
-            '1m_confirm_displacement_found': 0
+            '1m_confirm_displacement_found': 0,
+            # Liquidity Sweep unlock counter
+            'structure_unlock_liquidity': 0
         }
         
         # FIX #1: Reset pending signals
@@ -1912,9 +1956,20 @@ class MultiTimeframeTradingExecutor:
                 trend_1h = self.analyze_1h_trend(hist_1h, use_cache=True)
                 last_trend_update_idx = idx
             
+            # --- LIQUIDITY SWEEP CHECK (BEFORE EVENT DETECTION) ---
+            # Check for external liquidity sweep to unlock structure BEFORE detecting new events
+            # This allows new CHOCH events to be generated after liquidity is swept
+            current_15m_with_candle = pd.concat([hist_15m, current_candle.to_frame().T])
+            trend_15m_for_sweep = self._select_trend_with_windows(
+                current_15m_with_candle,
+                windows=[30, 50, 70],
+                swing_window=4
+            )
+            self._check_and_unlock_by_liquidity_sweep(current_15m_with_candle, trend_15m_for_sweep)
+            
             # STEP 2: Check for A+ entries on 15M (include current candle)
             # We check for events on the most recent 15M candle (current_candle)
-            current_15m_data = pd.concat([hist_15m, current_candle.to_frame().T])
+            current_15m_data = current_15m_with_candle  # Reuse already computed data
             # Stats for total/aligned events are updated inside this method
             a_plus_events = self.find_a_plus_entries_15m(current_15m_data, trend_1h)
             
@@ -2059,6 +2114,106 @@ class MultiTimeframeTradingExecutor:
         structure = build_market_structure(data, prominence_factor=prominence_factor)
         
         return structure
+    
+    def _detect_liquidity_sweep(self, structure: List[Dict], trend: str) -> Optional[Tuple[str, float, pd.Timestamp]]:
+        """
+        Detect if a liquidity sweep has occurred based on external liquidity.
+        
+        Definition:
+        - Downtrend: Liquidity sweep = price makes a higher high above last HH (bullish sweep)
+        - Uptrend: Liquidity sweep = price makes a lower low below last LL (bearish sweep)
+        
+        Args:
+            structure: Market structure data (list of swing points with type HH/HL/LH/LL)
+            trend: Current trend ("uptrend", "downtrend", "sideways")
+            
+        Returns:
+            Tuple of (sweep_direction, sweep_price, sweep_timestamp) or None if no sweep
+        """
+        if len(structure) < 4:
+            return None
+        
+        # Find the last HH and LL from the structure
+        last_hh = None
+        last_ll = None
+        prev_hh = None  # Previous HH (to compare with current)
+        prev_ll = None  # Previous LL (to compare with current)
+        
+        for point in structure:
+            swing_type = point.get('type')
+            if swing_type == 'HH':
+                prev_hh = last_hh
+                last_hh = point
+            elif swing_type == 'LL':
+                prev_ll = last_ll
+                last_ll = point
+        
+        # Downtrend: Look for bullish liquidity sweep (price breaks above last HH)
+        if trend == "downtrend" and last_hh and prev_hh:
+            # If current HH is above previous HH, it's a liquidity sweep
+            if last_hh['price'] > prev_hh['price']:
+                return ("Bullish", last_hh['price'], pd.Timestamp(last_hh['timestamp']))
+        
+        # Uptrend: Look for bearish liquidity sweep (price breaks below last LL)
+        if trend == "uptrend" and last_ll and prev_ll:
+            # If current LL is below previous LL, it's a liquidity sweep
+            if last_ll['price'] < prev_ll['price']:
+                return ("Bearish", last_ll['price'], pd.Timestamp(last_ll['timestamp']))
+        
+        return None
+    
+    def _check_and_unlock_by_liquidity_sweep(self, data_15m: pd.DataFrame, trend: str) -> bool:
+        """
+        Check for liquidity sweep and unlock CHOCH structure if new liquidity is swept.
+        
+        Args:
+            data_15m: 15M timeframe data
+            trend: Current trend from 15M timeframe
+            
+        Returns:
+            True if structure was unlocked, False otherwise
+        """
+        if data_15m is None or data_15m.empty:
+            return False
+        
+        # Build market structure
+        structure = self._build_market_structure(data_15m)
+        
+        if len(structure) < 4:
+            return False
+        
+        # Detect liquidity sweep
+        sweep = self._detect_liquidity_sweep(structure, trend)
+        
+        if sweep:
+            sweep_dir, sweep_price, sweep_time = sweep
+            
+            # Only unlock if this is NEW liquidity (different price level)
+            if self._last_liquidity_sweep_level != sweep_price:
+                # Reset structure lock in TradingExecutor
+                self._last_major_event_type = None
+                self._last_major_event_direction = None
+                
+                # CRITICAL: Also unlock CHOCH-BOS confirmation filter
+                # New external liquidity sweep acts like BOS confirmation
+                # This allows CHOCH trades after liquidity sweep (SMC principle)
+                self._bos_confirmed_after_choch = True
+                
+                # CRITICAL: Also unlock the MarketStructureAnalyzer's lock
+                # This allows new CHOCH events to be generated
+                self.market_analyzer.unlock_structure()
+                
+                # Update liquidity sweep tracking
+                self._last_liquidity_sweep_level = sweep_price
+                self._last_liquidity_sweep_time = sweep_time
+                
+                # Increment counter
+                self.stats['structure_unlock_liquidity'] += 1
+                
+                print(f"[UNLOCK] STRUCTURE UNLOCKED BY LIQUIDITY SWEEP | Direction: {sweep_dir} | Price: {sweep_price:.2f}")
+                return True
+        
+        return False
     
     def _is_trend_aligned(self, event: MarketEvent, trend: str) -> bool:
         """Check if market event aligns with the trend"""

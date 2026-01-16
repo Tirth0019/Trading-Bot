@@ -72,6 +72,16 @@ class MarketStructureAnalyzer:
         # --- HARD STRUCTURE LOCK (LEG-BASED) ---
         self._choch_locked: bool = False  # Lock CHOCH per structural leg
         self._choch_direction: str | None = None  # Direction of locked CHOCH
+    
+    def unlock_structure(self) -> None:
+        """
+        Force unlock the CHOCH structure lock.
+        Called by TradingExecutor when external liquidity is swept.
+        This allows new CHOCH detection after liquidity sweep.
+        """
+        self._structure_state = None
+        self._choch_locked = False
+        self._choch_direction = None
 
     def get_confidence_threshold(self, event_type: str) -> float:
         """Get confidence threshold for specific event type"""
