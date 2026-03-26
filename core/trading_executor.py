@@ -414,7 +414,6 @@ class MultiTimeframeTradingExecutor:
             (data_15m_current.index > event_time) & 
             (data_15m_current.index <= current_time)
         ]
-        ]
         
         if window_data.empty:
             return False
@@ -431,8 +430,8 @@ class MultiTimeframeTradingExecutor:
         retraced = False
         
         # Check each candle sequentially for pullback and subsequent reversal
-        for i in range(len(recent_data)):
-            candle = recent_data.iloc[i]
+        for i in range(len(window_data)):
+            candle = window_data.iloc[i]
             
             # Phase 1: Wait for retracement into tolerance zone
             if not retraced:
@@ -443,7 +442,7 @@ class MultiTimeframeTradingExecutor:
             
             # Phase 2: Once retraced, look for ANY reversal pattern on subsequent candles
             if i > 0:
-                prev_candle = recent_data.iloc[i-1]
+                prev_candle = window_data.iloc[i-1]
                 
                 # Check for reversal patterns based on event direction
                 if event.direction in ["BUY", "Bullish"] and self._is_bullish_reversal_candle(prev_candle, candle, broken_level, tolerance):
