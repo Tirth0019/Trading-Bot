@@ -95,6 +95,49 @@ class IntegratedBacktester:
         print(f" Winning Trades: {results['winning_trades']}")
         print(f" Losing Trades: {results['losing_trades']}")
         
+        # Retracement Debug Stats (STEP 5)
+        if hasattr(self.executor, 'stats'):
+            retrace_rejects = (
+                self.executor.stats.get('retracement_reject_no_expansion', 0) +
+                self.executor.stats.get('retracement_reject_expired', 0) +
+                self.executor.stats.get('retracement_reject_too_shallow', 0) +
+                self.executor.stats.get('retracement_reject_too_deep', 0) +
+                self.executor.stats.get('retracement_reject_no_reversal', 0)
+            )
+            if retrace_rejects > 0:
+                print(f"\n RETRACEMENT DEBUG STATS:")
+                print(f"   Rejected (No Expansion): {self.executor.stats.get('retracement_reject_no_expansion', 0)}")
+                print(f"   Rejected (Expired): {self.executor.stats.get('retracement_reject_expired', 0)}")
+                print(f"   Rejected (Too Shallow): {self.executor.stats.get('retracement_reject_too_shallow', 0)}")
+                print(f"   Rejected (Too Deep): {self.executor.stats.get('retracement_reject_too_deep', 0)}")
+                print(f"   Rejected (No Reversal): {self.executor.stats.get('retracement_reject_no_reversal', 0)}")
+        
+        # BOS Follow-Through Filter Stats
+        if hasattr(self.executor, 'stats'):
+            print(f"\n BOS FOLLOW-THROUGH FILTER STATS:")
+            print(f"   BOS Rejected (Weak Displacement): {self.executor.stats.get('bos_rejected_displacement', 0)}")
+            print(f"   BOS Rejected (Weak Body Ratio): {self.executor.stats.get('bos_rejected_body_ratio', 0)}")
+            print(f"   BOS Rejected (Other): {self.executor.stats.get('bos_rejected_other', 0)}")
+            total_bos_rejected = (self.executor.stats.get('bos_rejected_displacement', 0) + 
+                                 self.executor.stats.get('bos_rejected_body_ratio', 0) + 
+                                 self.executor.stats.get('bos_rejected_other', 0))
+            print(f"   Total BOS Rejected: {total_bos_rejected}")
+            
+            # Expansion vs Distribution Filter Stats
+            print(f"\n EXPANSION vs DISTRIBUTION FILTER STATS:")
+            print(f"   Rejected (Distribution/Chop): {self.executor.stats.get('rejected_distribution', 0)}")
+            
+            # 1M Confirmation Debug Stats (FIX #3)
+            print(f"\n 1M CONFIRMATION DEBUG STATS:")
+            print(f"   Window Empty (no candles yet): {self.executor.stats.get('1m_confirm_window_empty', 0)}")
+            print(f"   Window Expired: {self.executor.stats.get('1m_confirm_window_expired', 0)}")
+            print(f"   No Displacement Found: {self.executor.stats.get('1m_confirm_no_displacement', 0)}")
+            print(f"   Displacement Found (passed): {self.executor.stats.get('1m_confirm_displacement_found', 0)}")
+            
+            # Liquidity Sweep Unlock Stats
+            print(f"\n LIQUIDITY SWEEP UNLOCK STATS:")
+            print(f"   Structure Unlocks by Liquidity Sweep: {self.executor.stats.get('structure_unlock_liquidity', 0)}")
+        
         # Calculate additional metrics
         if results['trades_closed'] > 0:
             win_rate = (results['winning_trades'] / results['trades_closed']) * 100

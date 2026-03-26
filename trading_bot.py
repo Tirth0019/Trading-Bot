@@ -181,7 +181,7 @@ class TradingBot:
         }
         
         # Display results
-        print(f"\n📈 Market Analysis Results:")
+        print(f"\nMarket Analysis Results:")
         print(f"   1H Trend: {trend_1h}")
         print(f"   15M Trend: {trend_15m}")
         print(f"   A+ Events Found: {len(a_plus_events)}")
@@ -278,7 +278,7 @@ class TradingBot:
 def main():
     """Main entry point with command-line interface."""
     parser = argparse.ArgumentParser(
-        description="🚀 Centralized Trading Bot System",
+        description="Centralized Trading Bot System",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -331,10 +331,10 @@ Examples:
     
     # Exit with appropriate code
     if "error" in results:
-        print(f"\n❌ Error: {results['error']}")
+        print(f"\n Error: {results['error']}")
         sys.exit(1)
     else:
-        print("\n✅ Operation completed successfully!")
+        print("\n Operation completed successfully!")
         sys.exit(0)
 
 

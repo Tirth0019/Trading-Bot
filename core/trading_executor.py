@@ -1,5 +1,5 @@
-import pandas as pd
-import numpy as np
+import pandas as pd  # type: ignore
+import numpy as np  # type: ignore
 from typing import Dict, List, Optional, Tuple, Literal
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -29,6 +29,8 @@ class TradeSignal:
     risk_reward_ratio: float
     stop_loss_pips: float
     take_profit_pips: float
+    broken_level: Optional[Dict] = None  # Store broken level info for BOS follow-through validation
+    context: Optional[Dict] = None  # Store additional context (market phase, etc.)
 
 @dataclass
 class TradeExecution:
@@ -96,6 +98,17 @@ class MultiTimeframeTradingExecutor:
         self._last_choch_direction: str | None = None  # Direction of last CHOCH
         self._bos_confirmed_after_choch: bool = False  # True only after BOS confirms CHOCH direction
         
+        # --- CHOCH COOLDOWN STATE (Fix explosion loop) ---
+        self._last_choch_timestamp: pd.Timestamp | None = None  # Track last CHOCH timestamp for cooldown
+        self._last_choch_price: float | None = None  # Track last CHOCH price for cooldown
+        self.CHOCH_COOLDOWN_CANDLES: int = 6  # Cooldown window in 15M candles (4-8 range, using 6)
+        
+        # --- LIQUIDITY SWEEP STATE (CHOCH Unlock Mechanism) ---
+        self._last_liquidity_sweep_level: float | None = None   # Price level of last liquidity sweep
+        self._last_liquidity_sweep_time: pd.Timestamp | None = None  # Timestamp of last liquidity sweep
+        self._last_tracked_hh: float | None = None  # Track last HH for downtrend liquidity detection
+        self._last_tracked_ll: float | None = None  # Track last LL for uptrend liquidity detection
+        
         # Initialize analyzers
         self.market_analyzer = MarketStructureAnalyzer(config={"confidence_thresholds": {"BOS": confidence_threshold, "CHOCH": confidence_threshold}})
         self.risk_manager = RiskManager(risk_per_trade=risk_per_trade,
@@ -123,8 +136,39 @@ class MultiTimeframeTradingExecutor:
             'aligned_events': 0,
             'retracement_events': 0,
             'confirmed_1m_events': 0,
-            'processed_candles': 0
+            'processed_candles': 0,
+            'bos_rejected_displacement': 0,  # Track BOS rejections by displacement
+            'bos_rejected_body_ratio': 0,     # Track BOS rejections by body ratio
+            'bos_rejected_other': 0,         # Track other BOS rejections
+            'rejected_distribution': 0,       # Track expansion/distribution filter rejections
+            # Retracement debug counters (STEP 5)
+            'retracement_reject_no_expansion': 0,
+            'retracement_reject_expired': 0,
+            'retracement_reject_too_shallow': 0,
+            'retracement_reject_too_deep': 0,
+            'retracement_reject_no_reversal': 0,
+            # FIX #3: 1M Confirmation debug counters
+            '1m_confirm_window_empty': 0,
+            '1m_confirm_window_expired': 0,
+            '1m_confirm_no_displacement': 0,
+            '1m_confirm_displacement_found': 0,
+            # Liquidity Sweep unlock counter
+            'structure_unlock_liquidity': 0
         }
+        
+        # --- RETRACEMENT WINDOW STATE (STEP 1) ---
+        self._pending_choch: Dict | None = None  # Track pending CHOCH awaiting retracement
+        self._retracement_window_candles: int = 12  # 12 x 15M = 3 hours window
+        
+        # --- STEP 7: 1M CONFIRMATION WINDOW PARAMETERS ---
+        # FIX: Extended from 12 to 30 minutes to allow for 15M candle iteration rate
+        # (each 15M iteration = 15 minutes, so window must span at least 2 iterations)
+        self.ONE_M_CONFIRM_WINDOW: int = 30  # 30 minutes (30 x 1M candles)
+        self.MIN_DISPLACEMENT_ATR: float = 0.3  # Reduced from 0.4 to 0.3 for XAUUSD
+        self.MIN_BODY_RATIO_1M: float = 0.45  # Reduced from 0.5 to 0.45 for XAUUSD wicks
+        
+        # --- FIX #1: Pending signals for asynchronous 1M confirmation ---
+        self._pending_signals: List[Dict] = []  # Signals awaiting 1M confirmation
         
         # DEBUG: Confirm executor persistence
         print("Executor initialized", id(self))
@@ -296,7 +340,14 @@ class MultiTimeframeTradingExecutor:
                                                    data_15m_current: pd.DataFrame,
                                                    current_time: pd.Timestamp) -> bool:
         """
-        Check retracement confirmation with point-in-time data only (NO LOOK-AHEAD BIAS)
+        RETRACEMENT WINDOW LOGIC: Check retracement within a time window, not immediately.
+        
+        STEP 1-5 Implementation:
+        - Window-based retracement (not immediate)
+        - Requires expansion before retracement
+        - Relaxed depth for XAUUSD (0.25-0.382)
+        - Checks for touch (not just close)
+        - Debug counters for failure reasons
         
         Args:
             event: Market event to check
@@ -329,19 +380,53 @@ class MultiTimeframeTradingExecutor:
             return False
         
         current_atr = atr_series.iloc[-1]
-        tolerance = current_atr * 1.2  # Increased from 0.5 to 1.2 ATR tolerance (REALISTIC)
+        
+        # --- STEP 2: Relaxed retracement depth for XAUUSD (0.25-0.382) ---
+        # For XAUUSD: shallow retraces are common, use 0.25-0.382 range
+        min_retrace_ratio = 0.25  # Minimum retracement depth
+        max_retrace_ratio = 0.382  # Maximum retracement depth (Fibonacci)
+        tolerance = current_atr * 0.5  # Reduced tolerance for gold (was 1.2)
         
         # Get all price data after the event but before current time
         event_time = event.timestamp
-        recent_data = data_15m_current[
+        
+        # Calculate window expiry (12 candles = 3 hours)
+        event_idx = None
+        for idx, ts in enumerate(data_15m_current.index):
+            if ts >= event_time:
+                event_idx = idx
+                break
+        
+        if event_idx is None:
+            return False
+        
+        # Check if window expired
+        current_idx = len(data_15m_current) - 1
+        candles_since = current_idx - event_idx
+        if candles_since > self._retracement_window_candles:
+            self.stats['retracement_reject_expired'] += 1
+            if hasattr(self, 'debug') and self.debug:
+                print(f"    Retracement REJECTED: Window expired ({candles_since}/{self._retracement_window_candles} candles)")
+            return False
+        
+        # Get candles in window
+        window_data = data_15m_current[
             (data_15m_current.index > event_time) & 
             (data_15m_current.index <= current_time)
         ]
+        ]
         
-        if recent_data.empty:
+        if window_data.empty:
             return False
         
-        # Check if price has retraced to the broken level
+        # --- BOS: Allow immediate continuation (bypass retracement for strong BOS) ---
+        if event.event_type == EventType.BOS:
+            trend_strength_1h = getattr(self, "_last_trend_strength_1h", 1.0)
+            if trend_strength_1h > 0.6 and event.confidence >= 0.6:
+                return True  # Strong BOS bypasses retracement
+        
+        # --- STEP 4: Check for touch (not just close) ---
+        # --- STEP 2: Validate retracement depth (25-38.2% for XAUUSD) ---
         broken_level = event.price
         retraced = False
         
@@ -371,11 +456,16 @@ class MultiTimeframeTradingExecutor:
     def _is_trend_aligned_enhanced(self, event: MarketEvent, trend_1h: str, data_15m: pd.DataFrame) -> bool:
         """
         Enhanced trend alignment check: 1H + 15M trends must match.
-        Relaxed rules for sideways markets and CHOCH (reversal) events,
-        while keeping BOS (continuation) stricter but still allowing
-        slightly relaxed alignment.
+        
+        CRITICAL LOGIC:
+        - CHOCH (reversal): Skip HTF alignment - trend change expected
+        - BOS (continuation): Require HTF alignment - continuation trade
         """
-        # Analyze 15M trend using dual windows (12h = 48 bars, 24h = 96 bars)
+        # CRITICAL FIX: CHOCH bypasses HTF alignment (trend change signal)
+        if event.event_type == EventType.CHOCH:
+            return True  # Allow CHOCH to pass - alignment will confirm after BOS
+        
+        # BOS requires HTF alignment (continuation trade)
         if len(data_15m) < 20:
             return False
 
@@ -425,6 +515,26 @@ class MultiTimeframeTradingExecutor:
         return False
     
 
+    
+    def _is_bullish_reversal_candle(self, prev_candle: pd.Series, reversal_candle: pd.Series, 
+                                  broken_level: float, tolerance: float) -> bool:
+        """
+        Check for a realistic bullish bounce after a retracement.
+        Since we already know the price retraced into the zone, any solid green candle
+        that closes higher than the previous candle's close validates the end of the pullback.
+        """
+        # The candle must be bullish (green)
+        is_bullish = reversal_candle['Close'] > reversal_candle['Open']
+        
+        # The candle should ideally close higher than the previous candle's close
+        closed_higher = reversal_candle['Close'] > prev_candle['Close']
+        
+        # Reject tiny dojis by requiring at least some body size
+        body_size = reversal_candle['Close'] - reversal_candle['Open']
+        total_size = reversal_candle['High'] - reversal_candle['Low']
+        has_body = body_size >= total_size * 0.25 if total_size > 0 else False
+        
+        return is_bullish and closed_higher and has_body
     
     def _is_bullish_reversal_candle(self, prev_candle: pd.Series, reversal_candle: pd.Series, 
                                   broken_level: float, tolerance: float) -> bool:
@@ -510,7 +620,9 @@ class MultiTimeframeTradingExecutor:
             timeframe_1m_confirmation="PENDING",
             risk_reward_ratio=self.risk_reward_ratio,
             stop_loss_pips=self.stop_loss_pips,
-            take_profit_pips=self.stop_loss_pips * self.risk_reward_ratio
+            take_profit_pips=self.stop_loss_pips * self.risk_reward_ratio,
+            broken_level=event.broken_level,  # Store broken level for BOS follow-through validation
+            context={}  # Initialize context for market phase tracking
         )
         
         return signal
@@ -530,8 +642,25 @@ class MultiTimeframeTradingExecutor:
         Returns:
             Executed trade or None if execution fails
         """
+        # --- LIQUIDITY SWEEP UNLOCK (BEFORE STRUCTURE LOCK CHECK) ---
+        # Check for new external liquidity sweep to unlock CHOCH structure
+        if self._resampled_data is not None:
+            data_15m = self._resampled_data.get('15M')
+            if data_15m is not None and not data_15m.empty:
+                # Get current 15M trend
+                trend_15m = self._select_trend_with_windows(
+                    data_15m.loc[data_15m.index <= signal.timestamp],
+                    windows=[30, 50, 70],
+                    swing_window=4
+                )
+                # Check and potentially unlock by liquidity sweep
+                self._check_and_unlock_by_liquidity_sweep(
+                    data_15m.loc[data_15m.index <= signal.timestamp],
+                    trend_15m
+                )
+        
         # --- HARD STRUCTURE LOCK (EXECUTION LEVEL) ---
-        # Rule: Only ONE CHOCH per structure leg. Must wait for BOS to unlock.
+        # Rule: Only ONE CHOCH per structure leg. Must wait for BOS or liquidity sweep to unlock.
         
         # NOTE: signal.event_type is a string ("BOS" or "CHOCH"), so we compare with .value
         if signal.event_type == EventType.CHOCH.value:
@@ -562,6 +691,129 @@ class MultiTimeframeTradingExecutor:
                     f"(Waiting for BOS to confirm CHOCH direction)"
                 )
                 return None
+
+        # --------------------------------------------------
+        # BOS FOLLOW-THROUGH VALIDATION (CRITICAL)
+        # --------------------------------------------------
+        if signal.event_type == EventType.BOS.value:
+            if signal.broken_level is None:
+                print("[REJECT] BOS REJECTED (No broken level data)")
+                return None
+            
+            bos_level = signal.broken_level.get("price")
+            if bos_level is None:
+                print("[REJECT] BOS REJECTED (Invalid broken level)")
+                return None
+            
+            # Get BOS candle from 15M data
+            bos_candle = None
+            close_price = None
+            if self._resampled_data is not None:
+                data_15m = self._resampled_data.get('15M')
+                if data_15m is not None and not data_15m.empty:
+                    # Get candle at or just after the event timestamp
+                    event_candles = data_15m.loc[data_15m.index >= signal.timestamp]
+                    if not event_candles.empty:
+                        bos_candle = event_candles.iloc[0]
+                        close_price = bos_candle['Close']
+            
+            if close_price is None:
+                print("[REJECT] BOS REJECTED (Cannot get BOS candle)")
+                return None
+            
+            # Get ATR from 15M data (prefer 15M, fallback to 1M)
+            atr = None
+            if self._resampled_data is not None:
+                data_15m = self._resampled_data.get('15M')
+                if data_15m is not None and not data_15m.empty:
+                    data_pre_entry = data_15m.loc[data_15m.index <= signal.timestamp]
+                    atr_series = self.risk_manager.calculate_atr(data_pre_entry)
+                    if len(atr_series) > 0 and not pd.isna(atr_series.iloc[-1]):
+                        atr = atr_series.iloc[-1]
+            
+            # Fallback to 1M ATR if 15M not available
+            if atr is None:
+                atr_1m_series = self.risk_manager.calculate_atr(data_1m)
+                if len(atr_1m_series) > 0 and not pd.isna(atr_1m_series.iloc[-1]):
+                    atr = atr_1m_series.iloc[-1]
+            
+            if atr is None or atr == 0:
+                print("[REJECT] BOS REJECTED (ATR unavailable)")
+                return None
+            
+            displacement = abs(close_price - bos_level)
+            
+            # ❌ Reject weak BOS (no displacement)
+            if displacement < self.MIN_BOS_DISPLACEMENT_ATR * atr:
+                self.stats['bos_rejected_displacement'] += 1
+                print(
+                    f"[REJECT] BOS REJECTED (Weak Displacement) | "
+                    f"Disp={displacement:.2f}, ATR={atr:.2f}, Required={self.MIN_BOS_DISPLACEMENT_ATR * atr:.2f}"
+                )
+                return None
+            
+            # Candle structure check (acceptance)
+            if bos_candle is not None:
+                candle_range = bos_candle['High'] - bos_candle['Low']
+                candle_body = abs(bos_candle['Close'] - bos_candle['Open'])
+                
+                body_ratio = candle_body / candle_range if candle_range > 0 else 0
+                
+                if body_ratio < self.MIN_BOS_BODY_RATIO:
+                    self.stats['bos_rejected_body_ratio'] += 1
+                    print(
+                        f"[REJECT] BOS REJECTED (Weak Candle Body) | "
+                        f"BodyRatio={body_ratio:.2f}, Required={self.MIN_BOS_BODY_RATIO:.2f}"
+                    )
+                    return None
+
+        # --------------------------------------------------
+        # EXPANSION vs DISTRIBUTION FILTER (STEP B)
+        # --------------------------------------------------
+        # Check if market is expanding after structure event (AFTER retracement, BEFORE 1M confirmation)
+        if self._resampled_data is not None:
+            data_15m = self._resampled_data.get('15M')
+            if data_15m is not None and not data_15m.empty:
+                # Find event index in 15M data
+                event_timestamp = signal.timestamp
+                # Get data up to and including the event
+                data_15m_up_to_event = data_15m.loc[data_15m.index <= event_timestamp]
+                
+                if len(data_15m_up_to_event) > 0:
+                    # Find the index of the event candle (last candle <= event timestamp)
+                    event_index = len(data_15m_up_to_event) - 1
+                    
+                    # Get ATR for expansion check
+                    atr_15m = None
+                    atr_series = self.risk_manager.calculate_atr(data_15m_up_to_event)
+                    if len(atr_series) > 0 and not pd.isna(atr_series.iloc[-1]):
+                        atr_15m = atr_series.iloc[-1]
+                    
+                    # Fallback to 1M ATR if 15M not available
+                    if atr_15m is None:
+                        atr_1m_series = self.risk_manager.calculate_atr(data_1m)
+                        if len(atr_1m_series) > 0 and not pd.isna(atr_1m_series.iloc[-1]):
+                            atr_15m = atr_1m_series.iloc[-1]
+                    
+                    if atr_15m is not None and atr_15m > 0:
+                        # Check expansion using full 15M dataframe (need future candles)
+                        # For point-in-time, we need to use data up to current execution time
+                        # But for execute_trade, we can use all available data
+                        is_expanding = self.is_market_expanding(data_15m, event_index, atr_15m)
+                        
+                        if not is_expanding:
+                            self.stats['rejected_distribution'] += 1
+                            print("[REJECT] REJECTED: Market not expanding (Distribution/Chop)")
+                            # Store context for debugging
+                            if signal.context is None:
+                                signal.context = {}
+                            signal.context["market_phase"] = "DISTRIBUTION"
+                            return None
+                        else:
+                            # Store context for debugging
+                            if signal.context is None:
+                                signal.context = {}
+                            signal.context["market_phase"] = "EXPANSION"
 
         # Wait for 1M confirmation
         if not self.confirm_1m_signal(data_1m, signal.direction, signal.timestamp, signal.event_type):
@@ -626,6 +878,9 @@ class MultiTimeframeTradingExecutor:
             self._last_major_event_type = None
             self._last_major_event_direction = None
             self._last_choch_level = None  # Reset CHOCH level on BOS
+            # Reset CHOCH cooldown on BOS
+            self._last_choch_price = None
+            self._last_choch_timestamp = None
             
             # --- CHOCH-BOS CONFIRMATION: BOS confirms CHOCH direction ---
             if self._last_choch_direction == signal.direction:
@@ -658,8 +913,25 @@ class MultiTimeframeTradingExecutor:
         Returns:
             Executed trade or None if execution fails
         """
+        # --- LIQUIDITY SWEEP UNLOCK (BEFORE STRUCTURE LOCK CHECK) ---
+        # Check for new external liquidity sweep to unlock CHOCH structure
+        if self._resampled_data is not None:
+            data_15m = self._resampled_data.get('15M')
+            if data_15m is not None and not data_15m.empty:
+                # Get 15M data up to current time (point-in-time safe)
+                data_15m_current = data_15m.loc[data_15m.index <= current_time]
+                if len(data_15m_current) > 0:
+                    # Get current 15M trend
+                    trend_15m = self._select_trend_with_windows(
+                        data_15m_current,
+                        windows=[30, 50, 70],
+                        swing_window=4
+                    )
+                    # Check and potentially unlock by liquidity sweep
+                    self._check_and_unlock_by_liquidity_sweep(data_15m_current, trend_15m)
+        
         # --- HARD STRUCTURE LOCK (EXECUTION LEVEL) ---
-        # Rule: Only ONE CHOCH per structure leg. Must wait for BOS to unlock.
+        # Rule: Only ONE CHOCH per structure leg. Must wait for BOS or liquidity sweep to unlock.
         
         # NOTE: signal.event_type is a string ("BOS" or "CHOCH"), so we compare with .value
         if signal.event_type == EventType.CHOCH.value:
@@ -775,6 +1047,9 @@ class MultiTimeframeTradingExecutor:
             self._last_major_event_type = None
             self._last_major_event_direction = None
             self._last_choch_level = None  # Reset CHOCH level on BOS
+            # Reset CHOCH cooldown on BOS
+            self._last_choch_price = None
+            self._last_choch_timestamp = None
             
             # --- CHOCH-BOS CONFIRMATION: BOS confirms CHOCH direction ---
             if self._last_choch_direction == signal.direction:
@@ -825,159 +1100,86 @@ class MultiTimeframeTradingExecutor:
         if future_candles.empty:
             return False
         
-        next_candle = future_candles.iloc[0]
+        atr_1m = atr_series.iloc[-1]
         
-        # Calculate candle metrics
-        candle_range = next_candle['High'] - next_candle['Low']
-        body_size = abs(next_candle['Close'] - next_candle['Open'])
-        body_ratio = body_size / candle_range if candle_range > 0 else 0
+        # Get 1M candles in the confirmation window (12 minutes after entry_time)
+        window_end = entry_time + pd.Timedelta(minutes=self.ONE_M_CONFIRM_WINDOW)
         
-        # Volume filter
-        volume_confirmation = True
-        if 'Volume' in data_1m_current.columns and data_1m_current['Volume'].sum() > 0:
-            recent_volume = data_1m_current['Volume'].tail(20).mean()
-            volume_ratio = next_candle['Volume'] / recent_volume if recent_volume > 0 else 1
-            volume_confirmation = volume_ratio >= 1.1
-
-        # --- 1M DISPLACEMENT FILTER (CHOCH ONLY) ---
-        if event_type == "CHOCH":
-            # RE-INTRODUCED: 1M Displacement Logic
-            # Lookahead 8 minutes (candles) to measure momentum
+        # Get candles in window (after entry_time, up to window_end or current_time, whichever is earlier)
+        window_candles = data_1m_current[
+            (data_1m_current.index > entry_time) & 
+            (data_1m_current.index <= min(window_end, current_time))
+        ]
+        
+        if window_candles.empty:
+            return False
+        
+        # Check if window expired
+        if current_time > window_end:
+            # Window expired - no confirmation
+            if hasattr(self, 'debug') and self.debug:
+                print(f"    1M CONFIRM REJECTED: Window expired ({self.ONE_M_CONFIRM_WINDOW} minutes)")
+            return False
+        
+        # --- STEP 7: Sequential Check ---
+        # Phase 1: Check for liquidity sweep (optional - price ranges/consolidates)
+        liquidity_swept = False
+        if len(window_candles) >= 3:
+            # Simple liquidity check: price made a wick beyond recent range
+            recent_high = window_candles['High'].max()
+            recent_low = window_candles['Low'].min()
+            recent_range = recent_high - recent_low
             
-            # Using data_1m_current: We need candles strictly AFTER the entry time.
-            # But point-in-time constraints mean we might not have all 8 candles yet if current_time is close to entry.
-            # However, logic dictates we should check what we have or wait? 
-            # Given instructions: "validate_choch_displacement ... if >= 0.6"
-            
-            # Get candles after entry
-            post_entry_candles = data_1m_current[data_1m_current.index > entry_time]
-            lookahead_limit = 8
-            
-            # If we don't have enough data yet, we might want to wait, or check what we have.
-            # Assuming we check what is available up to current_time (point-in-time correctness).
-            lookahead = post_entry_candles.iloc[:lookahead_limit] # Up to 8 candles
-            
-            # Only proceed if we have at least 1-2 candles to measure SOMETHING
-            if not lookahead.empty:
-                # Calculate ATR on 1M
-                atr_1m_series = self.risk_manager.calculate_atr(data_1m_current)
-                atr_1m = atr_1m_series.iloc[-1] if (atr_1m_series is not None and not atr_1m_series.empty) else 0.0
-                
-                if atr_1m > 0:
-                    max_move = 0.0
-                    entry_price_ref = next_candle['Open'] # Or use the signal price if available? 
-                    # The function signature has no price, but we have next_candle (the confirmation candle).
-                    # Better to use the Open of the first confirmation candle as proxy for "CHOCH Price" level 
-                    # or better yet, simply measure from the start of the move. 
-                    # User pseudo-code: "choch_price". 
-                    # Let's use the first available candle Open or Close.
-                    ref_price = next_candle['Open'] 
-                    
-                    if signal_direction == "BUY" or signal_direction == "Bullish":
-                        max_high = lookahead["High"].max()
-                        max_move = max_high - ref_price
-                    else:
-                        min_low = lookahead["Low"].min()
-                        max_move = ref_price - min_low
-                        
-                    displacement = max_move / atr_1m
-                    
-                    displacement = max_move / atr_1m
-                    
-                    # LOGGING as requested
-                    log_msg = [
-                        f"🔍 CHOCH @ {entry_time} | Dir: {signal_direction}",
-                        f"   ATR_1M: {atr_1m:.5f} | MaxMove: {max_move:.5f}",
-                        f"   Displacement: {displacement:.2f} (Req: 0.6)"
-                    ]
-                    
-                    # Write to file directly to bypass stdout issues
-                    try:
-                        with open("choch_debug.log", "a", encoding="utf-8") as f:
-                            for msg in log_msg:
-                                f.write(msg + "\n")
-                                print(msg) # Still print for console users
-                    except Exception:
-                        pass # Ignore file write errors
-                    
-                    if displacement >= 0.6:
-                         print("   Result: PASS ✅")
-                         with open("choch_debug.log", "a", encoding="utf-8") as f: f.write("   Result: PASS ✅\n")
-                    else:
-                         print("   Result: FAIL ❌")
-                         with open("choch_debug.log", "a", encoding="utf-8") as f: f.write("   Result: FAIL ❌\n")
-                         return False # Enforce filter
+            # If price made a significant wick (liquidity sweep), mark it
+            for _, candle in window_candles.iterrows():
+                if signal_direction == "BUY":
+                    # Bullish: check for lower wick (swept liquidity below)
+                    lower_wick = min(candle['Open'], candle['Close']) - candle['Low']
+                    if lower_wick > 0.3 * recent_range:
+                        liquidity_swept = True
+                        break
+                else:  # SELL
+                    # Bearish: check for upper wick (swept liquidity above)
+                    upper_wick = candle['High'] - max(candle['Open'], candle['Close'])
+                    if upper_wick > 0.3 * recent_range:
+                        liquidity_swept = True
+                        break
         
-        # Direction confirmation
-        is_green = next_candle['Close'] > next_candle['Open']
-        is_red = next_candle['Close'] < next_candle['Open']
+        # Phase 2: Check for displacement (REQUIRED for confirmation)
+        # Displacement = abs(candle.close - candle.open) >= 0.4 * ATR_1M
+        # AND body_ratio >= 0.5
+        displacement_detected = False
         
-        # --- ASYMMETRIC LOGIC ---
-        
-        # Helper: Check for micro BOS (break of recent 1M swing)
-        has_micro_bos = False
-        # Get recent 1M data before the confirmation candle
-        recent_1m = data_1m_current[data_1m_current.index < next_candle.name].tail(30)
-        if len(recent_1m) >= 5:
-            swings_high, swings_low = detect_swing_points(recent_1m, window=3)
+        for _, candle in window_candles.iterrows():
+            candle_range = candle['High'] - candle['Low']
+            if candle_range == 0:
+                continue
             
-            if signal_direction == "BUY":
-                # Check for break of recent swing high
-                if swings_high:
-                    recent_high = swings_high[-1][1] # (timestamp, price)
-                    if next_candle['Close'] > recent_high:
-                        has_micro_bos = True
-                        
-            elif signal_direction == "SELL":
-                 # Check for break of recent swing low
-                if swings_low:
-                    recent_low = swings_low[-1][1]
-                    if next_candle['Close'] < recent_low:
-                        has_micro_bos = True
+            body_size = abs(candle['Close'] - candle['Open'])
+            body_ratio = body_size / candle_range
+            
+            # Calculate displacement
+            displacement = body_size
+            
+            # Check displacement threshold
+            if displacement >= self.MIN_DISPLACEMENT_ATR * atr_1m:
+                # Check body ratio
+                if body_ratio >= self.MIN_BODY_RATIO_1M:
+                    # Check direction alignment
+                    is_green = candle['Close'] > candle['Open']
+                    is_red = candle['Close'] < candle['Open']
+                    
+                    if (signal_direction == "BUY" and is_green) or (signal_direction == "SELL" and is_red):
+                        displacement_detected = True
+                        if hasattr(self, 'debug') and self.debug:
+                            print(f"    1M CONFIRM PASSED: Displacement={displacement:.2f} (≥{self.MIN_DISPLACEMENT_ATR * atr_1m:.2f}), BodyRatio={body_ratio:.2f}, LiquiditySwept={liquidity_swept}")
+                        break
         
-        # CHOCH Logic: Allow if (Momentum OR Volume OR Micro BOS)
-        if event_type == "CHOCH":
-            if signal_direction == "BUY":
-                is_momentum = is_green and (body_ratio >= 0.3 or volume_confirmation)
-                if has_micro_bos:
-                    print(f"OK 1M CONFIRM (CHOCH): micro BOS - {next_candle.name}")
-                    return True
-                elif is_momentum:
-                    print(f"OK 1M CONFIRM (CHOCH): micro momentum - {next_candle.name}")
-                    return True
-                else:
-                    print(f"REJECT 1M REJECT (CHOCH) - {next_candle.name}")
-                    return False
-            elif signal_direction == "SELL":
-                is_momentum = is_red and (body_ratio >= 0.3 or volume_confirmation)
-                if has_micro_bos:
-                    print(f"OK 1M CONFIRM (CHOCH): micro BOS - {next_candle.name}")
-                    return True
-                elif is_momentum:
-                    print(f"OK 1M CONFIRM (CHOCH): micro momentum - {next_candle.name}")
-                    return True
-                else:
-                    print(f"REJECT 1M REJECT (CHOCH) - {next_candle.name}")
-                    return False
-
-        # BOS Logic: Require Micro BOS (Structure)
-        else: # BOS or others
-            if signal_direction == "BUY":
-                if has_micro_bos:
-                    print(f"OK 1M CONFIRM (BOS): micro BOS - {next_candle.name}")
-                    return True
-                else:
-                    print(f"REJECT 1M REJECT (BOS): no BOS - {next_candle.name}")
-                    return False
-            elif signal_direction == "SELL":
-                if has_micro_bos:
-                    print(f"OK 1M CONFIRM (BOS): micro BOS - {next_candle.name}")
-                    return True
-                else:
-                    print(f"REJECT 1M REJECT (BOS): no BOS - {next_candle.name}")
-                    return False
-
-        return False
+        if not displacement_detected:
+            if hasattr(self, 'debug') and self.debug:
+                print(f"    1M CONFIRM REJECTED: No displacement detected in {len(window_candles)} candles")
+        
+        return displacement_detected
     
     def monitor_open_trades_point_in_time(self, 
                                         data_1m_current: pd.DataFrame,
@@ -1103,8 +1305,28 @@ class MultiTimeframeTradingExecutor:
             'aligned_events': 0,
             'retracement_events': 0,
             'confirmed_1m_events': 0,
-            'processed_candles': 0
+            'processed_candles': 0,
+            'bos_rejected_displacement': 0,  # Track BOS rejections by displacement
+            'bos_rejected_body_ratio': 0,     # Track BOS rejections by body ratio
+            'bos_rejected_other': 0,          # Track other BOS rejections
+            'rejected_distribution': 0,       # Track expansion/distribution filter rejections
+            # Retracement debug counters (STEP 5)
+            'retracement_reject_no_expansion': 0,
+            'retracement_reject_expired': 0,
+            'retracement_reject_too_shallow': 0,
+            'retracement_reject_too_deep': 0,
+            'retracement_reject_no_reversal': 0,
+            # FIX #3: 1M Confirmation debug counters
+            '1m_confirm_window_empty': 0,
+            '1m_confirm_window_expired': 0,
+            '1m_confirm_no_displacement': 0,
+            '1m_confirm_displacement_found': 0,
+            # Liquidity Sweep unlock counter
+            'structure_unlock_liquidity': 0
         }
+        
+        # FIX #1: Reset pending signals
+        self._pending_signals = []
 
         results = {
             'signals_generated': 0,
@@ -1156,9 +1378,20 @@ class MultiTimeframeTradingExecutor:
                 trend_1h = self.analyze_1h_trend(hist_1h, use_cache=True)
                 last_trend_update_idx = idx
             
+            # --- LIQUIDITY SWEEP CHECK (BEFORE EVENT DETECTION) ---
+            # Check for external liquidity sweep to unlock structure BEFORE detecting new events
+            # This allows new CHOCH events to be generated after liquidity is swept
+            current_15m_with_candle = pd.concat([hist_15m, current_candle.to_frame().T])
+            trend_15m_for_sweep = self._select_trend_with_windows(
+                current_15m_with_candle,
+                windows=[30, 50, 70],
+                swing_window=4
+            )
+            self._check_and_unlock_by_liquidity_sweep(current_15m_with_candle, trend_15m_for_sweep)
+            
             # STEP 2: Check for A+ entries on 15M (include current candle)
             # We check for events on the most recent 15M candle (current_candle)
-            current_15m_data = pd.concat([hist_15m, current_candle.to_frame().T])
+            current_15m_data = current_15m_with_candle  # Reuse already computed data
             # Stats for total/aligned events are updated inside this method
             a_plus_events = self.find_a_plus_entries_15m(current_15m_data, trend_1h)
             
@@ -1182,14 +1415,8 @@ class MultiTimeframeTradingExecutor:
                     if (current_timestamp - event.timestamp).total_seconds() > 172800:
                          continue
                     
-                    # --- CHOCH DE-DUPLICATION BY BROKEN LEVEL ---
-                    # Prevent duplicate detections of the same structural break
-                    if event.event_type == EventType.CHOCH:
-                        last_level = getattr(self, "_last_choch_level", None)
-                        if last_level is not None and abs(last_level - event.price) < 0.0001:  # Same level (within 1 pip)
-                            print(f"     CHOCH de-duplicated (same level: {event.price:.5f})")
-                            continue
-                        self._last_choch_level = event.price
+                    # NOTE: CHOCH cooldown is now handled at structure generation level
+                    # in smart_money_concepts.py - no late-stage filtering needed here
                     
                     print(f"\n NEW {event.event_type.value} - {event.direction} entry at {current_timestamp}")
                     print(f"   Confidence: {event.confidence:.2f}")
@@ -1212,17 +1439,43 @@ class MultiTimeframeTradingExecutor:
                         
                         print(f"    Signal generated: {signal.direction} (entry price will be determined at execution)")
                         
-                        # STEP 5: Execute trade with historical 1M data only
-                        trade = self.execute_trade_point_in_time(signal, 10000, hist_1m, current_timestamp)
-                        
-                        if trade:
-                            results['trades_executed'] += 1
-                            self.stats['confirmed_1m_events'] += 1
-                            print(f"    Trade executed: {trade.position_size:.2f} units")
-                        else:
-                            print("    Waiting for 1M confirmation...")
+                        # FIX #1: Add to pending signals for ASYNCHRONOUS 1M confirmation
+                        # Don't check 1M immediately - add to pending and check on subsequent candles
+                        pending_signal = {
+                            'signal': signal,
+                            'retracement_time': current_timestamp,
+                            'window_end': current_timestamp + pd.Timedelta(minutes=self.ONE_M_CONFIRM_WINDOW),
+                            'trend_1h': trend_1h
+                        }
+                        self._pending_signals.append(pending_signal)
+                        print(f"    Signal added to pending (1M confirmation window: {self.ONE_M_CONFIRM_WINDOW} minutes)")
                     else:
                         print("    Waiting for retracement confirmation...")
+            
+            # FIX #1: Process pending signals for 1M confirmation (ASYNCHRONOUS)
+            if self._pending_signals:
+                for pending in self._pending_signals[:]:  # Copy to avoid modification during iteration
+                    signal = pending['signal']
+                    retracement_time = pending['retracement_time']
+                    window_end = pending['window_end']
+                    
+                    # Check if window expired
+                    if current_timestamp > window_end:
+                        print(f"    1M CONFIRM EXPIRED: Signal from {retracement_time} - window ended")
+                        self.stats['1m_confirm_window_expired'] += 1
+                        self._pending_signals.remove(pending)
+                        continue
+                    
+                    # Try 1M confirmation with current 1M data
+                    trade = self.execute_trade_point_in_time(signal, 10000, hist_1m, current_timestamp)
+                    
+                    if trade:
+                        results['trades_executed'] += 1
+                        self.stats['confirmed_1m_events'] += 1
+                        self.stats['1m_confirm_displacement_found'] += 1
+                        print(f"    Trade executed: {trade.position_size:.2f} units (1M confirmation passed)")
+                        self._pending_signals.remove(pending)
+                    # If not confirmed, keep in pending for next iteration
             
             # STEP 6: Monitor open trades with current price from the loop
             current_1m_data = data_1m.loc[data_1m.index <= current_timestamp]
@@ -1283,6 +1536,106 @@ class MultiTimeframeTradingExecutor:
         structure = build_market_structure(data, prominence_factor=prominence_factor)
         
         return structure
+    
+    def _detect_liquidity_sweep(self, structure: List[Dict], trend: str) -> Optional[Tuple[str, float, pd.Timestamp]]:
+        """
+        Detect if a liquidity sweep has occurred based on external liquidity.
+        
+        Definition:
+        - Downtrend: Liquidity sweep = price makes a higher high above last HH (bullish sweep)
+        - Uptrend: Liquidity sweep = price makes a lower low below last LL (bearish sweep)
+        
+        Args:
+            structure: Market structure data (list of swing points with type HH/HL/LH/LL)
+            trend: Current trend ("uptrend", "downtrend", "sideways")
+            
+        Returns:
+            Tuple of (sweep_direction, sweep_price, sweep_timestamp) or None if no sweep
+        """
+        if len(structure) < 4:
+            return None
+        
+        # Find the last HH and LL from the structure
+        last_hh = None
+        last_ll = None
+        prev_hh = None  # Previous HH (to compare with current)
+        prev_ll = None  # Previous LL (to compare with current)
+        
+        for point in structure:
+            swing_type = point.get('type')
+            if swing_type == 'HH':
+                prev_hh = last_hh
+                last_hh = point
+            elif swing_type == 'LL':
+                prev_ll = last_ll
+                last_ll = point
+        
+        # Downtrend: Look for bullish liquidity sweep (price breaks above last HH)
+        if trend == "downtrend" and last_hh and prev_hh:
+            # If current HH is above previous HH, it's a liquidity sweep
+            if last_hh['price'] > prev_hh['price']:
+                return ("Bullish", last_hh['price'], pd.Timestamp(last_hh['timestamp']))
+        
+        # Uptrend: Look for bearish liquidity sweep (price breaks below last LL)
+        if trend == "uptrend" and last_ll and prev_ll:
+            # If current LL is below previous LL, it's a liquidity sweep
+            if last_ll['price'] < prev_ll['price']:
+                return ("Bearish", last_ll['price'], pd.Timestamp(last_ll['timestamp']))
+        
+        return None
+    
+    def _check_and_unlock_by_liquidity_sweep(self, data_15m: pd.DataFrame, trend: str) -> bool:
+        """
+        Check for liquidity sweep and unlock CHOCH structure if new liquidity is swept.
+        
+        Args:
+            data_15m: 15M timeframe data
+            trend: Current trend from 15M timeframe
+            
+        Returns:
+            True if structure was unlocked, False otherwise
+        """
+        if data_15m is None or data_15m.empty:
+            return False
+        
+        # Build market structure
+        structure = self._build_market_structure(data_15m)
+        
+        if len(structure) < 4:
+            return False
+        
+        # Detect liquidity sweep
+        sweep = self._detect_liquidity_sweep(structure, trend)
+        
+        if sweep:
+            sweep_dir, sweep_price, sweep_time = sweep
+            
+            # Only unlock if this is NEW liquidity (different price level)
+            if self._last_liquidity_sweep_level != sweep_price:
+                # Reset structure lock in TradingExecutor
+                self._last_major_event_type = None
+                self._last_major_event_direction = None
+                
+                # CRITICAL: Also unlock CHOCH-BOS confirmation filter
+                # New external liquidity sweep acts like BOS confirmation
+                # This allows CHOCH trades after liquidity sweep (SMC principle)
+                self._bos_confirmed_after_choch = True
+                
+                # CRITICAL: Also unlock the MarketStructureAnalyzer's lock
+                # This allows new CHOCH events to be generated
+                self.market_analyzer.unlock_structure()
+                
+                # Update liquidity sweep tracking
+                self._last_liquidity_sweep_level = sweep_price
+                self._last_liquidity_sweep_time = sweep_time
+                
+                # Increment counter
+                self.stats['structure_unlock_liquidity'] += 1
+                
+                print(f"[UNLOCK] STRUCTURE UNLOCKED BY LIQUIDITY SWEEP | Direction: {sweep_dir} | Price: {sweep_price:.2f}")
+                return True
+        
+        return False
     
     def _is_trend_aligned(self, event: MarketEvent, trend: str) -> bool:
         """Check if market event aligns with the trend"""
