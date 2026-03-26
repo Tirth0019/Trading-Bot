@@ -183,7 +183,7 @@ def main():
         symbol=SYMBOL,
         risk_per_trade=0.01,        # 1% risk
         confidence_threshold=0.6,    # Reduced for more signals
-        atr_multiplier=2.5,         # Reasonable stops
+        atr_multiplier=1.5,         # Reasonable stops (1.5x ATR)
         days_back=DAYS_BACK
     )
     

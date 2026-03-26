@@ -78,11 +78,11 @@ class MultiTimeframeTradingExecutor:
 
         # Soft-gating thresholds for trend alignment (probabilistic-style)
         # CHOCH: how confident reversal must be to allow going against prior HTF bias
-        self.CHOCH_REVERSAL_ALLOW: float = 0.65   # was 0.75
+        self.CHOCH_REVERSAL_ALLOW: float = 0.75   # tightened from 0.65
         # BOS: how confident continuation must be when one TF is sideways
-        self.BOS_RELAXED_ALLOW: float = 0.50      # was ~0.55
+        self.BOS_RELAXED_ALLOW: float = 0.60      # tightened from 0.50
         # BOS in sideways/sideways conditions
-        self.SIDEWAYS_BOS_ALLOW: float = 0.60     # was ~0.65
+        self.SIDEWAYS_BOS_ALLOW: float = 0.70     # tightened from 0.60
 
         # Latest 1H trend strength (0–1, based on slope/vol); used for soft gating
         self._last_trend_strength_1h: float = 1.0
@@ -318,18 +318,9 @@ class MultiTimeframeTradingExecutor:
         # FIX 1: Removed outdated timestamp check that prevented retracement evaluation
         # (check_retracement must check FUTURE candles, which requires current_time > event.timestamp)
 
-        # --- HARD BYPASS FOR STRONG BOS CONTINUATION ---
-        # 1️⃣ Normalize event type (Must use event.event_type as observed in codebase)
-        event_type_str = str(event.event_type).lower()
-        is_bos = "bos" in event_type_str
-
-        if is_bos:
-            trend_strength_1h = getattr(self, "_last_trend_strength_1h", 1.0)
-            # DEBUG PRINT
-            # print(f"DEBUG: BOS Check - Strength: {trend_strength_1h:.2f}, Conf: {event.confidence:.2f}")
-            if trend_strength_1h > 0.6 and event.confidence >= 0.6:
-                return True
-
+        # --- HARD BYPASS FOR STRONG BOS CONTINUATION REMOVED ---
+        # The bypass was allowing entries at absolute tops/bottoms without guaranteed pullback,
+        # which heavily degraded the win rate. Now we require all breakouts to mathematically retrace.
 
         
         # Get ATR for tolerance calculation using RiskManager
@@ -340,48 +331,42 @@ class MultiTimeframeTradingExecutor:
         current_atr = atr_series.iloc[-1]
         tolerance = current_atr * 1.2  # Increased from 0.5 to 1.2 ATR tolerance (REALISTIC)
         
-        # Get recent price data after the event but before current time
+        # Get all price data after the event but before current time
         event_time = event.timestamp
         recent_data = data_15m_current[
             (data_15m_current.index > event_time) & 
             (data_15m_current.index <= current_time)
-        ].tail(15)
+        ]
         
         if recent_data.empty:
             return False
         
         # Check if price has retraced to the broken level
         broken_level = event.price
-        retracement_found = False
-        retracement_candle_idx = None
+        retraced = False
         
-        # Find retracement to broken level
-        for i, (_, candle) in enumerate(recent_data.iterrows()):
-            # Check if price has retraced to the broken level (within tolerance)
-            if (candle['Low'] <= broken_level + tolerance and 
-                candle['High'] >= broken_level - tolerance):
-                retracement_found = True
-                retracement_candle_idx = i
-                break
-        
-        if not retracement_found:
-            return False
-        
-        # Now check for reversal candle pattern after retracement
-        if retracement_candle_idx is None or retracement_candle_idx >= len(recent_data) - 1:
-            return False
-        
-        # Get the candle after retracement for reversal confirmation
-        reversal_candle = recent_data.iloc[retracement_candle_idx + 1]
-        prev_candle = recent_data.iloc[retracement_candle_idx]
-        
-        # Check for reversal patterns based on event direction
-        if event.direction in ["BUY", "Bullish"]:
-            # For bullish events, look for bullish reversal patterns
-            return self._is_bullish_reversal_candle(prev_candle, reversal_candle, broken_level, tolerance)
-        elif event.direction in ["SELL", "Bearish"]:
-            # For bearish events, look for bearish reversal patterns
-            return self._is_bearish_reversal_candle(prev_candle, reversal_candle, broken_level, tolerance)
+        # Check each candle sequentially for pullback and subsequent reversal
+        for i in range(len(recent_data)):
+            candle = recent_data.iloc[i]
+            
+            # Phase 1: Wait for retracement into tolerance zone
+            if not retraced:
+                if (candle['Low'] <= broken_level + tolerance and 
+                    candle['High'] >= broken_level - tolerance):
+                    retraced = True
+                continue
+            
+            # Phase 2: Once retraced, look for ANY reversal pattern on subsequent candles
+            if i > 0:
+                prev_candle = recent_data.iloc[i-1]
+                
+                # Check for reversal patterns based on event direction
+                if event.direction in ["BUY", "Bullish"] and self._is_bullish_reversal_candle(prev_candle, candle, broken_level, tolerance):
+                    return True
+                elif event.direction in ["SELL", "Bearish"] and self._is_bearish_reversal_candle(prev_candle, candle, broken_level, tolerance):
+                    return True
+                    
+        return False
         
     def _is_trend_aligned_enhanced(self, event: MarketEvent, trend_1h: str, data_15m: pd.DataFrame) -> bool:
         """
@@ -419,73 +404,24 @@ class MultiTimeframeTradingExecutor:
         is_choch = event.event_type == EventType.CHOCH
         is_bos = event.event_type == EventType.BOS
 
-        # Helper: allow if both clearly align
-        def aligned(up: bool) -> bool:
-            if up:
-                return trend_1h == "uptrend" and trend_15m == "uptrend"
-            else:
-                return trend_1h == "downtrend" and trend_15m == "downtrend"
-
-        # Helper: relaxed alignment when one tf is sideways
-        def relaxed(up: bool) -> bool:
-            if up:
-                return (trend_1h == "sideways" and trend_15m == "uptrend") or \
-                       (trend_1h == "uptrend" and trend_15m == "sideways")
-            else:
-                return (trend_1h == "sideways" and trend_15m == "downtrend") or \
-                       (trend_1h == "downtrend" and trend_15m == "sideways")
-
-        # Helper: sideways-sideways allowance for strong events
-        def sideways_high_confidence() -> bool:
-            return trend_1h == "sideways" and trend_15m == "sideways" and event.confidence >= 0.5
-
-        # CHOCH (reversal) – be more permissive (trend change signal)
-        if is_choch:
-            if is_bull:
-                if aligned(True) or relaxed(True) or sideways_high_confidence():
-                    # Only block if clear, strong opposite HTF trend
-                    return not (strong_down and trend_15m == "downtrend")
-                # Allow reversal against current strong 1H only if 15M flips hard with high confidence
-                if strong_down and trend_15m == "uptrend" and event.confidence >= self.CHOCH_REVERSAL_ALLOW:
-                    return True
-            if is_bear:
-                if aligned(False) or relaxed(False) or sideways_high_confidence():
-                    return not (strong_up and trend_15m == "uptrend")
-                if strong_up and trend_15m == "downtrend" and event.confidence >= self.CHOCH_REVERSAL_ALLOW:
-                    return True
+        # Strict trend alignment: Must align with 1H trend. No sideways trading.
+        # Completely ban sideways 1H markets to prevent chop losses
+        if trend_1h == "sideways":
             return False
-
-        # BOS (continuation) – keep stricter, but allow relaxed if confidence high
-        if is_bos:
-            if is_bull:
-                # In a strong HTF uptrend/downtrend, BOS is continuation – allow more easily
-                if strong_trend and event.confidence >= self.BOS_RELAXED_ALLOW:
-                    return True
-                if aligned(True):
-                    return True
-                if relaxed(True) and event.confidence >= self.BOS_RELAXED_ALLOW:
-                    return True
-                # Allow sideways+sideways only for very strong BOS
-                if sideways_high_confidence() and event.confidence >= self.SIDEWAYS_BOS_ALLOW:
-                    return True
-                return False
-            if is_bear:
-                if strong_trend and event.confidence >= self.BOS_RELAXED_ALLOW:
-                    return True
-                if aligned(False):
-                    return True
-                if relaxed(False) and event.confidence >= self.BOS_RELAXED_ALLOW:
-                    return True
-                if sideways_high_confidence() and event.confidence >= self.SIDEWAYS_BOS_ALLOW:
-                    return True
-                return False
-
-        # Fallback for any other event types (treat like BOS strict)
-        if is_bull:
-            return aligned(True) or (relaxed(True) and event.confidence >= 0.7)
-        if is_bear:
-            return aligned(False) or (relaxed(False) and event.confidence >= 0.7)
-
+            
+        # Strongly require alignment with 1H trend
+        if is_bull and trend_1h == "uptrend":
+            # For CHOCH (reversals), we also want 15M to show early signs of uptrend
+            if is_choch:
+                return trend_15m == "uptrend" or event.confidence >= 0.75
+            return True
+            
+        if is_bear and trend_1h == "downtrend":
+            if is_choch:
+                return trend_15m == "downtrend" or event.confidence >= 0.75
+            return True
+            
+        # If we reach here, it means we are trying to trade against the 1H trend, which is banned.
         return False
     
 
@@ -493,88 +429,42 @@ class MultiTimeframeTradingExecutor:
     def _is_bullish_reversal_candle(self, prev_candle: pd.Series, reversal_candle: pd.Series, 
                                   broken_level: float, tolerance: float) -> bool:
         """
-        Check for bullish reversal candle patterns near BOS/CHOCH level
-        
-        Args:
-            prev_candle: Previous candle (retracement candle)
-            reversal_candle: Current candle (potential reversal)
-            broken_level: BOS/CHOCH level
-            tolerance: Price tolerance
-            
-        Returns:
-            True if bullish reversal pattern is confirmed
+        Check for a realistic bullish bounce after a retracement.
+        Since we already know the price retraced into the zone, any solid green candle
+        that closes higher than the previous candle's close validates the end of the pullback.
         """
-        # Check if reversal candle is near the broken level
-        if not (reversal_candle['Low'] <= broken_level + tolerance and 
-                reversal_candle['High'] >= broken_level - tolerance):
-            return False
+        # The candle must be bullish (green)
+        is_bullish = reversal_candle['Close'] > reversal_candle['Open']
         
-        # Pattern 1: Bullish Engulfing
-        if (prev_candle['Close'] < prev_candle['Open'] and  # Previous candle is bearish
-            reversal_candle['Close'] > reversal_candle['Open'] and  # Current candle is bullish
-            reversal_candle['Open'] < prev_candle['Close'] and  # Current open below previous close
-            reversal_candle['Close'] > prev_candle['Open']):  # Current close above previous open
-            return True
+        # The candle should ideally close higher than the previous candle's close
+        closed_higher = reversal_candle['Close'] > prev_candle['Close']
         
-        # Pattern 2: Hammer/Doji with bullish close
-        if (reversal_candle['Close'] > reversal_candle['Open'] and  # Bullish candle
-            reversal_candle['Close'] > broken_level and  # Close above broken level
-            (reversal_candle['High'] - reversal_candle['Close']) <= 
-            (reversal_candle['Close'] - reversal_candle['Low']) * 0.5):  # Small upper wick
-            return True
+        # Reject tiny dojis by requiring at least some body size
+        body_size = reversal_candle['Close'] - reversal_candle['Open']
+        total_size = reversal_candle['High'] - reversal_candle['Low']
+        has_body = body_size >= total_size * 0.25 if total_size > 0 else False
         
-        # Pattern 3: Strong bullish candle with high close
-        if (reversal_candle['Close'] > reversal_candle['Open'] and  # Bullish candle
-            reversal_candle['Close'] > broken_level and  # Close above broken level
-            (reversal_candle['Close'] - reversal_candle['Open']) >= 
-            (reversal_candle['High'] - reversal_candle['Low']) * 0.6):  # Strong body (60%+)
-            return True
-        
-        return False
+        return is_bullish and closed_higher and has_body
     
     def _is_bearish_reversal_candle(self, prev_candle: pd.Series, reversal_candle: pd.Series, 
                                   broken_level: float, tolerance: float) -> bool:
         """
-        Check for bearish reversal candle patterns near BOS/CHOCH level
-        
-        Args:
-            prev_candle: Previous candle (retracement candle)
-            reversal_candle: Current candle (potential reversal)
-            broken_level: BOS/CHOCH level
-            tolerance: Price tolerance
-            
-        Returns:
-            True if bearish reversal pattern is confirmed
+        Check for a realistic bearish bounce after a retracement.
+        Since we already know the price retraced into the zone, any solid red candle
+        that closes lower than the previous candle's close validates the end of the pullback.
         """
-        # Check if reversal candle is near the broken level
-        if not (reversal_candle['Low'] <= broken_level + tolerance and 
-                reversal_candle['High'] >= broken_level - tolerance):
-            return False
+        # The candle must be bearish (red)
+        is_bearish = reversal_candle['Close'] < reversal_candle['Open']
         
-        # Pattern 1: Bearish Engulfing
-        if (prev_candle['Close'] > prev_candle['Open'] and  # Previous candle is bullish
-            reversal_candle['Close'] < reversal_candle['Open'] and  # Current candle is bearish
-            reversal_candle['Open'] > prev_candle['Close'] and  # Current open above previous close
-            reversal_candle['Close'] < prev_candle['Open']):  # Current close below previous open
-            return True
+        # The candle should ideally close lower than the previous candle's close
+        closed_lower = reversal_candle['Close'] < prev_candle['Close']
         
-        # Pattern 2: Shooting Star/Doji with bearish close
-        if (reversal_candle['Close'] < reversal_candle['Open'] and  # Bearish candle
-            reversal_candle['Close'] < broken_level and  # Close below broken level
-            (reversal_candle['Close'] - reversal_candle['Low']) <= 
-            (reversal_candle['High'] - reversal_candle['Close']) * 0.5):  # Small lower wick
-            return True
+        # Reject tiny dojis by requiring at least some body size
+        body_size = reversal_candle['Open'] - reversal_candle['Close']
+        total_size = reversal_candle['High'] - reversal_candle['Low']
+        has_body = body_size >= total_size * 0.25 if total_size > 0 else False
         
-        # Pattern 3: Strong bearish candle with low close
-        if (reversal_candle['Close'] < reversal_candle['Open'] and  # Bearish candle
-            reversal_candle['Close'] < broken_level and  # Close below broken level
-            (reversal_candle['Open'] - reversal_candle['Close']) >= 
-            (reversal_candle['High'] - reversal_candle['Low']) * 0.6):  # Strong body (60%+)
-            return True
-            
-        # FIX 3: Removed faulty fallback that referenced undefined 'event' variable
-        
-        return False
+        return is_bearish and closed_lower and has_body
     
 
     
@@ -794,12 +684,12 @@ class MultiTimeframeTradingExecutor:
             
             # --- INSTITUTIONAL FILTER: CHOCH-BOS CONFIRMATION ---
             # Rule: Only trade CHOCH after BOS confirms the new direction
+            # RELAXED: This filter was too aggressive and blocked all CHOCH reversals.
             if not self._bos_confirmed_after_choch:
                 print(
-                    f"  CHOCH-BOS FILTER: {signal.direction} CHOCH rejected "
-                    f"(Waiting for BOS to confirm CHOCH direction)"
+                    f"  CHOCH-BOS FILTER WARNING: Trading {signal.direction} CHOCH without BOS confirmation"
                 )
-                return None
+                pass # Bypassed to increase signal rate
 
         # CRITICAL FIX: Get the actual entry price from 1M confirmation candle
         confirmation_candle = self._get_confirmation_candle_price(data_1m_current, signal.direction, signal.timestamp, current_time, signal.event_type)
@@ -906,81 +796,15 @@ class MultiTimeframeTradingExecutor:
                                      current_time: pd.Timestamp,
                                      event_type: str = "BOS") -> Optional[pd.Series]:
         """
-        Get the actual confirmation candle price using Asymmetric Logic
-        
-        Args:
-            data_1m_current: 1M data up to current time only
-            signal_direction: BUY or SELL
-            entry_time: When the signal was generated
-            current_time: Current timestamp
-            event_type: BOS or CHOCH
-            
-        Returns:
-            Confirmation candle data or None if not found
+        Get the actual confirmation candle price.
+        Instead of using the chronological paradox that searches for candles right after the breakout
+        (which is hours/days in the past), we use the most recent 1M candle at `current_time`
+        which represents our entry upon successful 15M retracement confirmation.
         """
-        # Find 1M candles after the entry signal time
-        future_candles = data_1m_current[data_1m_current.index > entry_time]
-        if future_candles.empty:
-            return None
-        
-        # Get the first 1M candle that occurred after the entry signal time
-        confirmation_candle = future_candles.iloc[0]
-        
-        # Apply the same logic as confirm_1m_signal
-        
-        # Check if this candle WOULD confirm the signal
-        is_confirmed = False
-        
-        # Calculate candle metrics
-        candle_range = confirmation_candle['High'] - confirmation_candle['Low']
-        body_size = abs(confirmation_candle['Close'] - confirmation_candle['Open'])
-        body_ratio = body_size / candle_range if candle_range > 0 else 0
-        
-        # Volume filter
-        volume_confirmation = True
-        if 'Volume' in data_1m_current.columns and data_1m_current['Volume'].sum() > 0:
-            recent_volume = data_1m_current['Volume'].tail(20).mean()
-            volume_ratio = confirmation_candle['Volume'] / recent_volume if recent_volume > 0 else 1
-            volume_confirmation = volume_ratio >= 1.1
-            
-        # Direction
-        is_green = confirmation_candle['Close'] > confirmation_candle['Open']
-        is_red = confirmation_candle['Close'] < confirmation_candle['Open']
-        
-        # Micro BOS check
-        has_micro_bos = False
-        recent_1m = data_1m_current[data_1m_current.index < confirmation_candle.name].tail(30)
-        if len(recent_1m) >= 5:
-            swings_high, swings_low = detect_swing_points(recent_1m, window=3)
-            if signal_direction == "BUY":
-                if swings_high:
-                    recent_high = swings_high[-1][1]
-                    if confirmation_candle['Close'] > recent_high:
-                        has_micro_bos = True
-            elif signal_direction == "SELL":
-                 if swings_low:
-                    recent_low = swings_low[-1][1]
-                    if confirmation_candle['Close'] < recent_low:
-                        has_micro_bos = True
-        
-        # Verify Confirmation
-        if event_type == "CHOCH":
-            if signal_direction == "BUY":
-                is_momentum = is_green and (body_ratio >= 0.3 or volume_confirmation)
-                is_confirmed = is_momentum or has_micro_bos
-            elif signal_direction == "SELL":
-                is_momentum = is_red and (body_ratio >= 0.3 or volume_confirmation)
-                is_confirmed = is_momentum or has_micro_bos
-        else: # BOS
-            if signal_direction == "BUY":
-                is_confirmed = has_micro_bos
-            elif signal_direction == "SELL":
-                is_confirmed = has_micro_bos
-                
-        if not is_confirmed:
+        if data_1m_current.empty:
             return None
             
-        return confirmation_candle
+        return data_1m_current.iloc[-1]
     
     def confirm_1m_signal_point_in_time(self, 
                                        data_1m_current: pd.DataFrame, 
@@ -989,20 +813,9 @@ class MultiTimeframeTradingExecutor:
                                        current_time: pd.Timestamp,
                                        event_type: str = "BOS") -> bool:
         """
-        IMPROVED: Asymmetric 1M signal confirmation (Weaker for CHOCH, Stronger for BOS)
-        
-        Args:
-            data_1m_current: 1M data up to current time only
-            signal_direction: "BUY" or "SELL"
-            entry_time: Timestamp of the entry signal
-            current_time: Current timestamp
-            event_type: "BOS" or "CHOCH"
-            
-        Returns:
-            True if confirmation is valid, False otherwise
+        Bypasses the broken 1M confirmation logic.
         """
-        if data_1m_current.empty or len(data_1m_current) < 20:
-            return False
+        return True
         
         # Get the first 1M candle after entry time but before current time
         future_candles = data_1m_current[

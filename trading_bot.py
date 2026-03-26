@@ -304,8 +304,8 @@ Examples:
     parser.add_argument("--days", type=int, default=60, help="Days to analyze (default: 60)")
     parser.add_argument("--risk", type=float, default=0.01, help="Risk per trade (default: 0.01 = 1%%)")
     parser.add_argument("--confidence", type=float, default=0.6, help="Confidence threshold (default: 0.6)")
-    parser.add_argument("--atr", type=float, default=2.5, help="ATR multiplier (default: 2.5)")
-    parser.add_argument("--rr", type=float, default=2.0, help="Risk-reward ratio (default: 2.0)")
+    parser.add_argument("--atr", type=float, default=1.5, help="ATR multiplier (default: 1.5)")
+    parser.add_argument("--rr", type=float, default=1.5, help="Risk-reward ratio (default: 1.5)")
     parser.add_argument("--data", type=str, default=None, help="Path to data file (auto-detects if not provided)")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     
